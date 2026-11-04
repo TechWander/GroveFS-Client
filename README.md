@@ -31,9 +31,17 @@ grovefs = { path = "../grovefs", default-features = false, features = ["remote-o
 
 `remote-only` compiles `RemoteMeta` + `RemoteBackend` + the `proto` framing, and
 stubs out the few `libc`/`fuser` call sites through `grovefs::platform` (errno
-constants, `getuid`, self-SIGTERM). `grovefs::fs_impl` (the FUSE bridge), the
-local backend, and the meta-*server* are all gated behind the `native` feature
-and are not pulled in here.
+constants, `getuid`, self-SIGTERM). The entire server-side/control-plane
+subtree — `fs_impl` (the FUSE bridge), the local backend, the on-disk meta
+engine, the meta-*server*, MCP, apikeys, `control`, `pg_store` — is gated
+behind `native` and absent from this build's dependency graph. That also drops
+their crate deps: **no `rusqlite`/`libsqlite3-sys`** (so no bundled-SQLite C
+compilation), **no `postgres`/`tokio`**, no `fuser`/`libc`. Verify with:
+
+```sh
+cargo tree --target x86_64-pc-windows-gnu \
+  | grep -cE 'rusqlite|libsqlite3|postgres|tokio|fuser'   # 0
+```
 
 ## Source layout
 
