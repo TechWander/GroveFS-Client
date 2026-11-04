@@ -1,0 +1,6 @@
+[package]
+name = "winfsp"
+version = "0.13.2+winfsp-2.1"
+edition = "2021"
+description = "OFFLINE TYPE-CHECK API-MIRROR of winfsp 0.13.2 — NOT the real crate. Signatures copied verbatim from the registry source; used only with [patch.crates-io] + `cargo check --target *-windows-*` to type-check cfg(windows) code where libclang/MSVC/WinFsp SDK are unavailable. Never link against this."
+license = "MIT"

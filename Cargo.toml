@@ -1,0 +1,56 @@
+[package]
+name = "grovefs-win"
+version = "0.1.0"
+edition = "2021"
+description = "Native Windows (WinFsp) client that mounts a GroveFS view as a drive letter"
+license = "MIT"
+
+# Windows-only mount path, but the crate BUILDS AND TESTS on any host: the
+# WinFsp crates are target-gated (below) and the callback surface in `src/fs.rs`
+# is `#[cfg(windows)]`, so on Linux `cargo test` compiles and runs the pure
+# translation logic in `src/mapping.rs` against the grovefs `remote-only` seam.
+# A real, linkable Windows build additionally needs WinFsp 2.1 installed and the
+# MSVC (or LLVM-MinGW) toolchain — see build.rs and README.
+
+[[bin]]
+name = "grovefs-win"
+path = "src/main.rs"
+
+[dependencies]
+# The GroveFS library, client-only: RemoteMeta + RemoteBackend + the wire
+# protocol, with NO fuser and NO libc in the dependency graph. This is exactly
+# the seam `remote-only` was added for, and it is what lets a Windows target
+# (and the Linux host, for tests) link the metadata + data path cleanly.
+grovefs = { path = "../grovefs", default-features = false, features = ["remote-only"] }
+# CLI parsing (cross-platform).
+clap = { version = "4", features = ["derive"] }
+# Interior-mutability locks for per-handle state (WinFsp dispatches callbacks on
+# driver threads, so FileContext is only ever reached behind &).
+parking_lot = "0.12"
+# Fresh object keys (data_ref) when a new file is created through the mount.
+uuid = { version = "1", features = ["v4"] }
+
+# WinFsp is a Windows-only user-mode filesystem host; `winfsp-sys` runs bindgen
+# against the Windows SDK + needs libclang, so it cannot even build on a Linux
+# host. Gating these to `cfg(windows)` keeps them out of the Linux test graph.
+# The `FileSystemContext` callback signatures use `winfsp_sys::FILE_ACCESS_RIGHTS`
+# / `FILE_FLAGS_AND_ATTRIBUTES`, but those are plain `u32` type aliases, so the
+# impl writes `u32` and needs no direct `winfsp-sys` dependency.
+[target.'cfg(windows)'.dependencies]
+winfsp = "0.13.2"
+# Clean Ctrl-C -> unmount shutdown for the interactive mount path.
+ctrlc = "3"
+
+# TEMP (verification only): API-mirror cross-check on hosts without
+# libclang/WinFsp/MSVC. Uncomment ONLY to run
+#   cargo check --target x86_64-pc-windows-gnu
+# to type-check the cfg(windows) code; MUST stay commented for any real Windows
+# build (the stub has no FFI — a binary linked against it cannot serve IRPs).
+# See README "离线类型检查".
+# [patch.crates-io]
+# winfsp = { path = "vendor/winfsp-api-mirror" }
+
+# NOTE: there are deliberately NO [build-dependencies]. The delay-load link
+# flags WinFsp requires are emitted by `build.rs` from raw `cargo:rustc-link-*`
+# directives keyed on the target triple (inlined from winfsp's own helper), so
+# the build script stays self-contained and compiles on non-Windows hosts too.
