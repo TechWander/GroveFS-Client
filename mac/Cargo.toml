@@ -1,0 +1,21 @@
+[package]
+name = "grovefs-mac"
+version = "0.1.0"
+edition = "2021"
+description = "Native macOS client that mounts a GroveFS view as a directory (skeleton)"
+license = "MIT"
+
+# Skeleton only: the CLI and the `remote-only` seam are wired, the macOS mount
+# backend is not implemented yet. Builds and runs on any host so the argument
+# surface can be exercised in CI; a real mount needs macFUSE (or FSKit) on macOS.
+
+[[bin]]
+name = "grovefs-mac"
+path = "src/main.rs"
+
+[dependencies]
+# Same client-only seam as `win`: RemoteMeta + RemoteBackend + the wire
+# protocol, with NO fuser and NO libc in the dependency graph.
+grovefs = { path = "../../grovefs", default-features = false, features = ["remote-only"] }
+# CLI parsing (cross-platform).
+clap = { version = "4", features = ["derive"] }
