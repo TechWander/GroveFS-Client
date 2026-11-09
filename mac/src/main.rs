@@ -1,29 +1,40 @@
 //! `grovefs-mac` — mount a GroveFS *view* at a directory on macOS.
 //!
-//! Skeleton for the Apple counterpart of `grovefs mount` (Linux) and
-//! `grovefs-win` (Windows). It parses the SAME connection/mount options and
-//! reuses grovefs's `remote-only` seam — `RemoteMeta` for the authoritative
-//! view tree, `RemoteBackend` for object bytes — over the SAME framed TCP
-//! protocol, so only the kernel bridge is Apple-specific.
+//! The Apple counterpart of `grovefs mount` (Linux) and `grovefs-win`
+//! (Windows). It talks to the SAME cluster services over the SAME framed TCP
+//! protocol — the central `meta-server` for the authoritative view tree, a
+//! `data-server` for object bytes — and serves the result through macFUSE,
+//! reusing the real `GroveFS` FUSE implementation (`grovefs::fs_impl`) rather
+//! than re-deriving the VFS surface.
 //!
-//! Mount host (to implement): macFUSE, driven through `fuser`'s macOS backend
-//! (the same FUSE bridge grovefs already uses on Linux), or FSKit on newer
-//! macOS. The planned layout mirrors `../win`: translation logic that needs no
-//! FUSE types in a host-testable module, and the macOS-only glue behind
-//! `#[cfg(target_os = "macos")]`.
+//! The library seam: grovefs's `fuse-bridge` feature supplies `fs_impl` +
+//! `bwlimit` + the real `libc` shims without the on-disk engine or the cluster
+//! servers; `remote-only` supplies `RemoteMeta` + `RemoteBackend` + the wire
+//! protocol. Together they are exactly "the client half of `grovefs mount`".
 //!
 //!   grovefs-mac --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 \
 //!               --view alice --token s3cr3t --mount /Volumes/alice
+//!
+//! Building for real on macOS needs macFUSE 4.x installed (fuser's build
+//! script probes it with pkg-config); see README.
+
+use std::path::PathBuf;
 
 use clap::Parser;
+use fuser::{Config as SessionConfig, MountOption, Session, SessionACL};
+use grovefs::backend::StorageBackend;
+use grovefs::fs_impl::GroveFS;
+use grovefs::meta::MetaProvider;
+use grovefs::remote::{RemoteBackend, RemoteMeta};
 
 #[derive(Parser, Debug)]
 #[command(
     name = "grovefs-mac",
-    about = "Mount a GroveFS view as a directory on macOS (skeleton)"
+    about = "Mount a GroveFS view as a directory on macOS (macFUSE)"
 )]
 struct Cli {
     /// Central metadata service address: `host:port` (the `meta-server`).
+    /// May also be a failover list (`primary,standby`).
     #[arg(long, value_name = "HOST:PORT")]
     meta_addr: String,
     /// Data service address: `host:port` (the `data-server`).
@@ -39,12 +50,25 @@ struct Cli {
     /// `--require-api-key`. Empty means gate by the static token only.
     #[arg(long, value_name = "ID:SECRET", default_value = "")]
     api_key: String,
-    /// Existing empty directory to mount on, e.g. `/Volumes/alice`.
+    /// Existing directory to mount on, e.g. `/Volumes/alice`.
     #[arg(long, value_name = "DIR")]
-    mount: String,
+    mount: PathBuf,
     /// Present the view strictly read-only regardless of what the server allows.
     #[arg(long)]
     ro: bool,
+    /// Strict cache coherence for multi-client mounts: disable the kernel
+    /// attribute/dentry cache and read file data straight through
+    /// (FOPEN_DIRECT_IO), so a peer's writes are visible immediately.
+    #[arg(long = "no-cache")]
+    no_cache: bool,
+    /// Kernel attribute/dentry cache TTL in seconds (default 2). Ignored when
+    /// `--no-cache` is set.
+    #[arg(long = "cache-ttl", value_name = "SECS", default_value_t = 2)]
+    cache_ttl: u64,
+    /// Extra fuser/macFUSE options, e.g. allow_root, allow_other,
+    /// default_permissions, auto_unmount, volname=GroveFS.
+    #[arg(short = 'o', long, num_args = 0..)]
+    options: Vec<String>,
 }
 
 fn main() {
@@ -56,18 +80,106 @@ fn main() {
 }
 
 fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    // The CLI and the grovefs `remote-only` seam are in place; the mount host
-    // is not. Keep the parsed configuration in the message so the argument
-    // surface can be verified from any host (including Linux CI).
-    let host = if cfg!(target_os = "macos") {
-        "macFUSE/FSKit mount backend not implemented yet"
-    } else {
-        "grovefs-mac only mounts on macOS; macFUSE is unavailable here"
-    };
-    Err(format!(
-        "{host} (parsed: --meta-addr {} --data-addr {} --view {} --mount {} --ro {}; \
-         to check the CLI on this host run `cargo run -p grovefs-mac -- --help`)",
-        cli.meta_addr, cli.data_addr, cli.view, cli.mount, cli.ro
-    )
-    .into())
+    // macFUSE requires an EXISTING mount point (it mounts *onto* a directory,
+    // unlike a drive letter); creating one silently would leave an empty dir
+    // behind on a failed mount, so refuse early with a clear message.
+    let mountpoint = &cli.mount;
+    let md = std::fs::metadata(mountpoint).map_err(|e| {
+        format!(
+            "mount point {} is not usable: {e} (create an empty directory first)",
+            mountpoint.display()
+        )
+    })?;
+    if !md.is_dir() {
+        return Err(format!("mount point {} is not a directory", mountpoint.display()).into());
+    }
+
+    // 1. Authoritative view tree over the LAN.
+    let rm = RemoteMeta::new_with_creds(
+        &cli.meta_addr,
+        &cli.view,
+        &cli.token,
+        // self-reported audit uid; access control is the token / API key.
+        grovefs::platform::getuid(),
+        &cli.api_key,
+    )?;
+    // A DERIVED (virtual, read-only) view must be read-only at the mount too;
+    // capture the M_OPEN ack flag before boxing the provider.
+    let view_ro = rm.is_readonly_view();
+    let meta: std::sync::Arc<dyn MetaProvider> = std::sync::Arc::new(rm);
+
+    // 2. Object bytes over the LAN (single data-server; no striping in v1).
+    let backend: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(
+        RemoteBackend::new_with_creds(&cli.data_addr, &cli.token, &cli.api_key)?,
+    );
+
+    // 3. Read-only is the CLI flag, an `-o ro`, or a server-side derived lens.
+    let o_ro = cli.options.iter().any(|s| s == "ro");
+    let read_only = cli.ro || o_ro || view_ro;
+
+    // The SAME FUSE implementation `grovefs mount` uses, fed the remote seam.
+    let fs = GroveFS::new(
+        meta,
+        backend,
+        read_only,
+        false, // content stays writable unless the whole mount is read-only
+        cli.no_cache,
+        true, // READDIRPLUS
+        cli.cache_ttl,
+        0, // no client-side bandwidth cap
+        0,
+    );
+
+    // 4. Session config. macFUSE names the volume in Finder via `volname=`;
+    //    other options pass through exactly like `grovefs mount -o`.
+    let mut cfg = SessionConfig::default();
+    cfg.mount_options
+        .push(MountOption::FSName(format!("grovefs:{}", cli.view)));
+    if read_only {
+        cfg.mount_options.push(MountOption::RO);
+    }
+    #[cfg(target_os = "macos")]
+    cfg.mount_options
+        .push(MountOption::CUSTOM(format!("volname=GroveFS-{}", cli.view)));
+    for raw in &cli.options {
+        match raw.as_str() {
+            "allow_root" => cfg.acl = SessionACL::RootAndOwner,
+            "allow_other" => cfg.acl = SessionACL::All,
+            "default_permissions" => cfg.mount_options.push(MountOption::DefaultPermissions),
+            "auto_unmount" => cfg.mount_options.push(MountOption::AutoUnmount),
+            "ro" => {
+                if !cfg.mount_options.contains(&MountOption::RO) {
+                    cfg.mount_options.push(MountOption::RO);
+                }
+            }
+            other => cfg.mount_options.push(MountOption::CUSTOM(other.to_string())),
+        }
+    }
+
+    // 5. Mount, then serve. `run()` is the blocking loop; Ctrl-C takes the
+    //    mount down through the callable unmounter so macFUSE releases the
+    //    mount point instead of leaving a stale volume behind.
+    let mut session = Session::new(fs, mountpoint, &cfg).map_err(|e| {
+        if cfg!(target_os = "macos") {
+            format!(
+                "mount failed: {e} — is macFUSE installed and its kernel extension \
+                 approved? (`brew install --cask macfuse`)"
+            )
+        } else {
+            format!("mount failed: {e}")
+        }
+    })?;
+    let mut unmounter = session.unmount_callable();
+    ctrlc::set_handler(move || {
+        let _ = unmounter.unmount();
+    })?;
+
+    eprintln!(
+        "grovefs-mac: mounted view '{}' at {} (read-only: {read_only}) — press Ctrl-C to unmount",
+        cli.view,
+        mountpoint.display()
+    );
+    session.run()?;
+    eprintln!("grovefs-mac: unmounted {}", mountpoint.display());
+    Ok(())
 }

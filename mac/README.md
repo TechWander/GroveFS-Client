@@ -2,50 +2,94 @@
 
 Native **macOS** client that mounts a GroveFS *view* at a directory — the
 macOS counterpart of `grovefs mount` on Linux and [`grovefs-win`](../win/README.md)
-on Windows. It is a **skeleton**: the CLI and the `grovefs` client seam are
-wired, the mount host is not implemented.
+on Windows. It talks to the **same** cluster services over the **same** framed
+TCP protocol (central `meta-server` for the view tree, a `data-server` for
+object bytes) and serves the result through **macFUSE**.
 
-## Current state
-
-```sh
-cargo run -p grovefs-mac -- --help     # full option surface, any host
-```
-
-`run()` parses the configuration and exits non-zero with a clear
-"not implemented yet" message. Nothing is mounted — on macOS or elsewhere.
-
-## Planned mount host
-
-Two routes, both keeping the platform glue thin:
-
-* **macFUSE** through `fuser`'s macOS backend — the same high-level `fuser`
-  0.18 bridge grovefs already uses on Linux, so the existing `fs_impl` logic
-  can be reused rather than rewritten.
-* **FSKit** — Apple's user-space filesystem framework on newer macOS, if
-  macFUSE (a kernel extension requiring user approval) is not acceptable.
-
-Layout mirrors `../win`: put every path/attribute/time conversion that needs no
-FUSE types in a host-testable module (`mapping.rs` equivalent), and keep the
-macOS-only glue behind `#[cfg(target_os = "macos")]` so `cargo test` still runs
-the translation logic on Linux CI.
-
-## Interface
-
-The option surface is identical to `grovefs-win`, except `--mount` takes an
-existing empty directory instead of a drive letter:
+Unlike the Windows client, it does not re-implement the VFS surface: it reuses
+the real `GroveFS` FUSE implementation (`grovefs::fs_impl`) that `grovefs mount`
+uses on Linux. Only the kernel bridge host differs.
 
 ```
 grovefs-mac --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 \
-            --view alice --token s3cr3t --mount /Volumes/alice [--ro]
+            --view alice --token s3cr3t --mount /Volumes/alice
 ```
 
-* `--token` / `--api-key` are the server-side credential gate (same semantics
-  as the Windows client).
-* `--ro` forces read-only; a view the server reports as *derived* will also be
-  mounted read-only.
+## How it reuses `grovefs`
 
-## Dependency seam
+The main library exposes two client-facing feature sets:
 
-Same as `win/`: `grovefs` with `default-features = false, features =
-["remote-only"]` — `RemoteMeta` + `RemoteBackend` + wire protocol only, no
-`fuser`/`libc`/metadata engine in the graph.
+| feature | provides |
+|---------|----------|
+| `remote-only` | `RemoteMeta` + `RemoteBackend` + the wire protocol, no `fuser`/`libc`, no engine |
+| `fuse-bridge` | the `fs_impl` mount path + `bwlimit` + real `libc` POSIX shims, no engine/servers |
+
+This crate combines them:
+
+```toml
+grovefs = { path = "../../grovefs", default-features = false,
+            features = ["remote-only", "fuse-bridge"] }
+```
+
+So the dependency graph is the client half only — **no `rusqlite`/`libsqlite3`,
+no `postgres`/`tokio`**:
+
+```sh
+cargo tree -p grovefs-mac | grep -cE 'rusqlite|libsqlite3|postgres|tokio'   # 0
+```
+
+## Building
+
+### macOS
+
+macFUSE 4.x must be installed (its kernel extension approved) and discoverable
+by `pkg-config`; fuser's build script probes it:
+
+```sh
+brew install --cask macfuse
+brew install pkgconf
+cargo build -p grovefs-mac --release
+```
+
+On Apple Silicon, enable third-party kernel extensions in *System Settings →
+Privacy & Security* before the first mount.
+
+### Linux (for testing)
+
+fuser 0.18 uses its pure-Rust mount on Linux, so the same binary builds and
+mounts there — handy for end-to-end checks without a Mac:
+
+```sh
+cd grovefs-client
+cargo build -p grovefs-mac
+```
+
+## Usage
+
+```
+grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
+            --token TOKEN [--api-key ID:SECRET] --mount DIR [--ro] \
+            [--no-cache] [--cache-ttl SECS] [-o OPT]...
+```
+
+* `--mount` is an **existing** directory (macFUSE mounts onto it; it does not
+  create one). `volname=GroveFS-<view>` is passed on macOS so Finder shows a
+  named volume.
+* `--token` / `--api-key` are the server-side credential gate, same semantics
+  as the Windows client.
+* `--ro` forces read-only; an `-o ro` does the same, and a view the server
+  reports as *derived* is mounted read-only automatically.
+* `--no-cache` turns on strict cross-client coherence (dentry/attr TTL 0 +
+  direct IO); otherwise the kernel cache TTL is `--cache-ttl` (default 2 s).
+* `-o` passes extra fuser/macFUSE options (`allow_root`, `allow_other`,
+  `default_permissions`, `auto_unmount`, `volname=...`).
+* `Ctrl-C` unmounts through the session's unmounter, so no stale volume is left
+  behind.
+
+## v1 scope
+
+* Single `data-server` for the data plane (no client-side striping).
+* Single-threaded session dispatch (fuser `n_threads`/`clone_fd` is a Linux
+  optimisation; macFUSE serves the one loop).
+* No macOS-specific metadata features (tags, resource forks, ACLs); the tree is
+  the GroveFS view, presented POSIX-style.

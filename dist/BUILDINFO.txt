@@ -1,0 +1,9 @@
+grovefs-client prebuilt clients
+built: 2026-11-09
+host: Linux 5.4.0-216-generic x86_64
+rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+source: working tree on top of 4d252ad (mac implementation commit)
+profile: release, lto=true, stripped
+grovefs-mac: Linux build, fuser pure-Rust mount (macOS build needs macFUSE 4.x)
+grovefs-win: Linux build, cfg(not(windows)) stub, no WinFsp FFI

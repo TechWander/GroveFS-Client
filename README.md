@@ -8,19 +8,25 @@ object bytes.
 
 | member | kernel bridge | state |
 |--------|---------------|-------|
-| [`win/`](win/README.md) | WinFsp | Working: mounts a view as a drive letter (`M:`, `next`). |
-| [`mac/`](mac/README.md) | macFUSE / FSKit | Skeleton: CLI wired, mount backend not implemented. |
+| [`win/`](win/README.md) | WinFsp | Working: mounts a view as a drive letter (`M:`, `next`). Re-implements the WinFsp callback surface. |
+| [`mac/`](mac/README.md) | macFUSE | Working: mounts a view at a directory, reusing the `GroveFS` FUSE implementation from the main library. |
 
-Both crates depend on the main library the same way — client half only:
+Both crates are client-only. `win/` takes the transport seam alone:
 
 ```toml
 grovefs = { path = "../../grovefs", default-features = false, features = ["remote-only"] }
 ```
 
-`remote-only` compiles `RemoteMeta` + `RemoteBackend` + the wire protocol and
-stubs the `libc`/`fuser` call sites, so neither client pulls the Linux FUSE
-mount, the on-disk metadata engine, the servers, or their crate deps
-(`rusqlite`, `postgres`, `tokio`).
+`mac/` adds the FUSE bridge so it can serve the remote view through the SAME
+`GroveFS` mount path as `grovefs mount`:
+
+```toml
+grovefs = { path = "../../grovefs", default-features = false,
+            features = ["remote-only", "fuse-bridge"] }
+```
+
+Neither pulls the on-disk metadata engine or the servers (`rusqlite`,
+`postgres`, `tokio`).
 
 ## Layout
 
@@ -34,20 +40,21 @@ grovefs-client/
 │   ├── src/fs.rs       # #[cfg(windows)] WinFsp callback surface
 │   ├── src/main.rs     # CLI + mount wiring
 │   └── vendor/         # winfsp API-mirror stub (offline type-check only)
-└── mac/                # macOS client skeleton (binary: grovefs-mac)
+└── mac/                # macFUSE client (binary: grovefs-mac)
     ├── Cargo.toml
-    └── src/main.rs     # same CLI surface, mount backend pending
+    ├── src/main.rs     # CLI + fuser Session over grovefs::fs_impl::GroveFS
+    └── README.md
 ```
 
-The split inside `win/` is the pattern `mac/` will follow: every conversion
-that needs no FUSE type lives in a host-testable module, and the platform-only
-glue is gated behind `#[cfg(target_os = ...)]`, so the translation logic is
-exercised by `cargo test` on any machine.
+The two members choose different reuse seams: Windows maps WinFsp callbacks in
+`win/src/fs.rs` onto the same `MetaProvider`/`StorageBackend` traits, while
+macOS reuses the `GroveFS` FUSE implementation verbatim (the `fuse-bridge`
+feature) and only mounts it through fuser's macFUSE backend.
 
 ## Build and test
 
 ```sh
-# Workspace-wide, on any host (mac/ is a stub; win/ runs its mapping tests).
+# Workspace-wide, on any host (win/ runs its mapping tests).
 cargo test
 
 # Per member.
@@ -56,6 +63,10 @@ cargo run  -p grovefs-mac -- --help
 
 # Real Windows binary (needs WinFsp 2.1 + MSVC or LLVM-MinGW, see win/README).
 cargo build -p grovefs-win --release --target x86_64-pc-windows-msvc
+
+# macOS binary (needs macFUSE 4.x + pkgconf on the Mac; builds and even mounts
+# on Linux via fuser's pure-Rust mount, see mac/README).
+cargo build -p grovefs-mac --release
 ```
 
 Binaries land in the workspace `target/` directory.
