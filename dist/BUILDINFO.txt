@@ -1,9 +1,17 @@
 grovefs-client prebuilt clients
-built: 2026-11-09
+built: 2026-11-15
 host: Linux 5.4.0-216-generic x86_64
 rustc: rustc 1.99.0 (b940084d7 2026-09-28)
 cargo: cargo 1.99.0 (5f94df478 2026-08-27)
-source: working tree on top of 4d252ad (mac implementation commit)
+source: grovefs-client b13f968 (clean working tree)
+        against sibling grovefs kernel at 3ba071c -- metadata backends reduced
+        to the SQLite / PostgreSQL tiers; the kernel src/ tree was clean at that
+        commit (later working-tree changes touched only .build-bin and .gitignore,
+        which no client binary links)
 profile: release, lto=true, stripped
 grovefs-mac: Linux build, fuser pure-Rust mount (macOS build needs macFUSE 4.x)
 grovefs-win: Linux build, cfg(not(windows)) stub, no WinFsp FFI
+regression: .build-bin/test_client.sh in the kernel repo mounts grovefs-mac
+        against meta-server/data-server built from the same kernel, across both
+        control-plane tiers (SQLite + PostgreSQL), plus the unknown-view and
+        token-gate refusals
