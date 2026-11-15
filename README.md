@@ -1,5 +1,7 @@
 # grovefs-client
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Platform-native GroveFS clients. Each member mounts a GroveFS *view* using the
 host OS's own kernel filesystem bridge — no Linux FUSE, no NFS — while talking
 to the **same** cluster services over the **same** framed TCP protocol: the
@@ -70,3 +72,10 @@ cargo build -p grovefs-mac --release
 ```
 
 Binaries land in the workspace `target/` directory.
+
+## License
+
+Apache License 2.0（见仓库根目录 `LICENSE`）。
+
+Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0);
+see the [`LICENSE`](LICENSE) file at the repository root for the full text.
