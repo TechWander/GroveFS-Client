@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(meta_err_to_status(MetaError::NotEmpty), STATUS_DIRECTORY_NOT_EMPTY);
         assert_eq!(meta_err_to_status(MetaError::Db("x".into())), STATUS_INTERNAL_ERROR);
         // the status values are negative i32 (high bit set), as NTSTATUS requires
-        assert!(STATUS_OBJECT_NAME_NOT_FOUND < 0);
+        const { assert!(STATUS_OBJECT_NAME_NOT_FOUND < 0) };
     }
 
     #[test]
