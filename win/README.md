@@ -65,7 +65,7 @@ so on Linux they are **not** in the build graph at all:
 
 ```sh
 cd win
-cargo test          # builds the grovefs `remote-only` seam + mapping, runs 10 tests
+cargo test          # builds the grovefs `remote-only` seam + mapping + CLI contract, runs 18 tests (11 mapping, 7 roster/bootstrap)
 ```
 
 (`cargo test -p grovefs-win` from the workspace root does the same.)

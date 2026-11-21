@@ -541,7 +541,7 @@ grep -c "view-definition tail" $C/dist/grovefs-mac
 <p>四层，从上到下代价递增；<b>前三层在任意 Linux 主机上都能跑</b>，不需要 Mac 或 Windows。</p>
 <h4>① 本地（本仓，无需任何服务端）</h4>
 <pre><code>cd $C
-cargo test                          <span class="cmt"># 工作区全部成员：win 15 条（11 条 mapping 门判定 + 4 条 roster 坐标），mac 4 条（roster 坐标）</span>
+cargo test                          <span class="cmt"># 工作区全部成员：win 18 条（11 条 mapping 门判定 + 4 条 roster 坐标 + 3 条 --manager 的 CLI 契约），mac 7 条（4 条 roster 坐标 + 3 条 --manager 的 CLI 契约）</span>
 cargo clippy --workspace --all-targets
 cargo build --release -p grovefs-mac -p grovefs-win &amp;&amp; strip --strip-unneeded target/release/*</code></pre>
 <p>要验 <code>#[cfg(windows)]</code> 那段挂载代码，走 <a href="#s15">1.5</a> 最后的 vendor stub 路线（patch 只加在<b>工作区根</b>，验完连 <code>Cargo.lock</code> 一起复原）。</p>
