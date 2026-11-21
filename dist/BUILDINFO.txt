@@ -1,17 +1,29 @@
 grovefs-client prebuilt clients
-built: 2026-11-15
+built: 2026-11-21
 host: Linux 5.4.0-216-generic x86_64
 rustc: rustc 1.99.0 (b940084d7 2026-09-28)
 cargo: cargo 1.99.0 (5f94df478 2026-08-27)
-source: grovefs-client b13f968 (clean working tree)
-        against sibling grovefs kernel at 3ba071c -- metadata backends reduced
-        to the SQLite / PostgreSQL tiers; the kernel src/ tree was clean at that
-        commit (later working-tree changes touched only .build-bin and .gitignore,
-        which no client binary links)
+source: grovefs-client 3682e14 (clean working tree — the two binaries and this
+        file are the only paths this commit touched on top of it)
+        against sibling grovefs kernel at a8fcfae (branch exp/treedb-integration;
+        verified clean for src/ and tests/ at build time — the release binary
+        postdates no kernel source file, so these clients link exactly the
+        tree that commit pins)
 profile: release, lto=true, stripped
 grovefs-mac: Linux build, fuser pure-Rust mount (macOS build needs macFUSE 4.x)
 grovefs-win: Linux build, cfg(not(windows)) stub, no WinFsp FFI
+what changed vs the previous drop (b13f968 @ kernel 3ba071c):
+  * Data-Access Capability is now latched from the meta plane's M_OPEN ack and
+    replayed on every data-plane OP_OPEN (RemoteBackend::new_with_dac), so these
+    binaries mount a `--data-access-key` cluster; a pre-DAC client is refused
+    there by the data-server with its own refusal text.
+  * M_OPEN ack byte [2] (FORK: structure writable, content read-only) is honoured
+    by both shells, and the definition tail (resolved name / base / kind) is
+    announced in the mount banner. The mac shell forwards content_ro into
+    grovefs::fs_impl::GroveFS; the win shell gates write/set_file_size through
+    the same two-flag rule in win/src/mapping.rs.
 regression: .build-bin/test_client.sh in the kernel repo mounts grovefs-mac
         against meta-server/data-server built from the same kernel, across both
         control-plane tiers (SQLite + PostgreSQL), plus the unknown-view and
-        token-gate refusals
+        token-gate refusals. A 27-assertion DAC/fork/derived pass over the same
+        pair is recorded in the client repo's commit message for 3682e14.

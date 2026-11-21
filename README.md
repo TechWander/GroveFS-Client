@@ -95,6 +95,23 @@ Practically: rebuild these clients against the kernel you deploy, and refresh
 runs the shipped `dist/grovefs-mac` against its own servers precisely so this
 pairing is tested rather than assumed.
 
+That pairing is the board's `client` row — kernel-side `.build-bin/test_client.sh`,
+38 assertions (39 with its negative control), sections A–G: SQLite and PostgreSQL
+control planes with a kernel mount reading back this client's bytes; an unknown
+view refused; the static `--token` gate both ways; a `--data-access-key` pair
+where the capability has to travel `M_OPEN` → `OP_OPEN` (and an UNGATED pair on
+the same store still mounting the old byte-for-byte way); the FORK mount serving
+`mkdir`/`rename` while `write(2)` returns `EROFS` and the base view stays
+writable; the DERIVED lens wholly read-only; and `--require-api-key` admitting
+`--api-key`. Run it from the kernel checkout with `PRE_DAC_REV=<rev>` — a
+`grovefs-client` revision whose `dist/` predates the capability handshake — and
+its one extra assertion proves the gate refuses that older binary rather than
+letting it mount. The script lives in `.build-bin/`, which the kernel's
+`.gitignore` keeps local (`/.*/`), so it ships with the checkout, not with a
+clone: extending the handshake means extending that script there and syncing the
+assertion counts the kernel's `README.md` / `USAGE.md` / `docs/docs.html` quote
+for the `client` row.
+
 ## License
 
 Apache License 2.0（见仓库根目录 `LICENSE`）。
