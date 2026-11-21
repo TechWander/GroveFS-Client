@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GroveFS 平台客户端 · 使用说明</title>
+<style>
+:root{
+  --bg:#fafaf7; --panel:#ffffff; --ink:#1d2530; --ink2:#5b6572; --line:#e3e1d8;
+  --accent:#0b7a5e; --accent2:#0a5c8a; --warn-bg:#fff7e6; --warn-line:#e6c26a;
+  --code-bg:#101820; --code-ink:#d7e2ea; --code-dim:#7d8c99;
+  --ok-bg:#eef7f2; --tag-bg:#eef1f5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171c; --panel:#1b2028; --ink:#d8dde3; --ink2:#98a2ad; --line:#2b323c;
+    --accent:#3ecf9e; --accent2:#5db3e8; --warn-bg:#2a2415; --warn-line:#8a7433;
+    --code-bg:#0c1116; --code-ink:#c9d6df; --code-dim:#6b7885;
+    --ok-bg:#16241e; --tag-bg:#232a33;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.75 "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.layout{display:flex;max-width:1560px;margin:0 auto}
+nav.toc{position:sticky;top:0;align-self:flex-start;width:300px;flex:none;
+  max-height:100vh;overflow-y:auto;padding:28px 20px 60px;border-right:1px solid var(--line);background:var(--panel)}
+nav.toc h1{font-size:17px;margin:0 0 2px}
+nav.toc .sub{font-size:12px;color:var(--ink2);margin-bottom:18px}
+nav.toc h2{font-size:13px;margin:22px 0 6px;color:var(--ink2);letter-spacing:.08em}
+nav.toc ol{list-style:none;margin:0;padding:0}
+nav.toc li{margin:3px 0}
+nav.toc a{display:block;font-size:13.5px;color:var(--ink);padding:3px 8px;border-radius:6px}
+nav.toc a:hover{background:var(--tag-bg);text-decoration:none}
+nav.toc a.l2{padding-left:22px;color:var(--ink2);font-size:13px}
+main{flex:1;min-width:0;padding:40px 48px 100px;max-width:1010px}
+header.hero h1{font-size:30px;margin:6px 0 10px;line-height:1.3}
+header.hero p{color:var(--ink2);max-width:70em}
+.badges{margin:14px 0 6px;display:flex;flex-wrap:wrap;gap:8px}
+.badges span{background:var(--tag-bg);border:1px solid var(--line);border-radius:999px;
+  padding:3px 12px;font-size:12.5px;color:var(--ink2)}
+section{margin:52px 0 0}
+h2.part{font-size:23px;border-top:3px solid var(--accent);padding-top:16px;margin-top:64px}
+h3{font-size:19px;margin:44px 0 10px}
+h4{font-size:15.5px;margin:28px 0 8px;color:var(--accent2)}
+p{margin:10px 0}
+.lead{font-size:14px;color:var(--ink2);border-left:3px solid var(--line);padding:2px 0 2px 14px;margin:14px 0}
+pre{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:14px 16px;
+  overflow-x:auto;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:12px 0}
+pre .cmt{color:var(--code-dim)}
+pre .out{color:#9fc4a2}
+code{background:var(--tag-bg);border-radius:5px;padding:1px 6px;font:0.92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  overflow-wrap:break-word}
+pre code{background:none;padding:0;font-size:inherit;white-space:pre}
+/* only inside table cells must a flag string stay on one line — elsewhere a
+   long verbatim message still has to wrap, or it blows the page width */
+th code,td code{white-space:nowrap}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:7px 11px;text-align:left;vertical-align:top;
+  min-width:52px}   /* without this a two-character cell like 必填 stacks vertically */
+th{background:var(--tag-bg);font-weight:600}
+tr:nth-child(even) td{background:color-mix(in srgb,var(--tag-bg) 45%,transparent)}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:10px;padding:10px 16px;margin:14px 0}
+.ok{background:var(--ok-bg);border:1px solid var(--accent);border-radius:10px;padding:10px 16px;margin:14px 0}
+.scene{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent2);
+  border-radius:10px;padding:12px 18px;margin:16px 0}
+.scene b{color:var(--accent2)}
+.tw{margin:14px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tw table{margin:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:960px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
+.card h5{margin:2px 0 8px;font-size:14px}
+footer{border-top:1px solid var(--line);margin-top:80px;padding-top:20px;color:var(--ink2);font-size:13px}
+.chnav{display:flex;justify-content:space-between;margin-top:34px;font-size:13.5px;color:var(--ink2)}
+@media (max-width:1100px){
+  .layout{flex-direction:column}
+  nav.toc{position:relative;width:auto;max-height:none;border-right:none;border-bottom:1px solid var(--line)}
+  main{padding:30px 22px 80px}
+}
+@media (max-width:600px){
+  th,td{padding:6px 9px}
+  table{font-size:13px}
+  /* a squeezed column breaks CJK one character per line; let the table take its
+     natural width inside .tw and swipe instead */
+  .tw table{width:max-content;min-width:100%}
+  header.hero h1{font-size:25px}
+  h2.part{font-size:21px}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <h1>GroveFS 平台客户端</h1>
+  <div class="sub">grovefs-win / grovefs-mac · 使用说明</div>
+  <h2>第一部分 · 起步</h2>
+  <ol>
+    <li><a href="#s11">1.1 两个壳与内核的关系</a></li>
+    <li><a href="#s12">1.2 五分钟跑通</a></li>
+    <li><a href="#s13">1.3 dist/ 预编译与版本核对</a></li>
+    <li><a href="#s14">1.4 服务端前置条件</a></li>
+    <li><a href="#s15">1.5 自己构建</a></li>
+  </ol>
+  <h2>第二部分 · 挂载与参数</h2>
+  <ol>
+    <li><a href="#s21">2.1 参数总表</a></li>
+    <li><a href="#s22">2.2 grovefs-mac 挂载</a></li>
+    <li><a href="#s23">2.3 grovefs-win 挂载</a></li>
+    <li><a href="#s24">2.4 缓存与多客户端一致性</a></li>
+  </ol>
+  <h2>第三部分 · 权限与视图语义</h2>
+  <ol>
+    <li><a href="#s31">3.1 三道门：token / api-key / DAC</a></li>
+    <li><a href="#s32">3.2 四种视图在客户端的表现</a></li>
+    <li><a href="#s33">3.3 客户端是内容只读的唯一执行点</a></li>
+  </ol>
+  <h2>第四部分 · 排障与验证</h2>
+  <ol>
+    <li><a href="#s41">4.1 挂不上：判据与处置</a></li>
+    <li><a href="#s42">4.2 静默降级的识别</a></li>
+    <li><a href="#s43">4.3 v1 边界（不支持项）</a></li>
+    <li><a href="#s44">4.4 改动后怎么验证</a></li>
+  </ol>
+  <h2>附</h2>
+  <ol>
+    <li><a href="#s51">5.1 与内核对齐的纪律</a></li>
+    <li><a href="#s52">5.2 权威文档指针</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>GroveFS 平台客户端 · 使用说明</h1>
+  <p>本页讲<b>两个平台壳</b>怎么用：<code>grovefs-mac</code>（macOS 经 macFUSE，同一份源码在 Linux 上用纯 Rust 挂载，可直接当端到端探针）与 <code>grovefs-win</code>（Windows 经 WinFsp，把视图挂成盘符）。它们<b>不是另一套存储</b>：走的是与 <code>grovefs mount</code> 完全相同的帧协议、相同的 <code>meta-server</code>（权威树）与 <code>data-server</code>（对象字节）；换的只是内核桥——不依赖 Linux FUSE，也不走 NFS。</p>
+  <div class="badges">
+    <span>win/ = WinFsp 2.1 + MSVC 或 LLVM-MinGW</span>
+    <span>mac/ = macFUSE 4.x（Linux 上纯 Rust 挂载）</span>
+    <span>依赖图只有客户端那一半：无 rusqlite / postgres / tokio</span>
+    <span>协议无版本号：兼容与否取决于 M_OPEN 握手解析的宽严</span>
+    <span>本页断言数字取自 2026-11-21 实跑</span>
+  </div>
+  <p class="lead">约定：下文 <code>$C</code> 指本仓根目录（<code>grovefs-client/</code>），<code>$G</code> 指内核仓的 <code>grovefs</code> 可执行文件，<code>$K</code> 指本仓客户端二进制（<code>$C/target/release/grovefs-mac</code>，或预编译的 <code>$C/dist/grovefs-mac</code>）。示例地址统一用虚构内网 <code>10.0.0.1</code>，元数据服务端口 <code>50110</code>、数据服务端口 <code>50100</code>；照抄时换成自己的。窄屏（手机）阅读时，宽表格与命令块都可以左右滑动。</p>
+</header>
+
+<!-- ======================================================== 第一部分 -->
+<section id="p1">
+<h2 class="part">第一部分 · 起步</h2>
+
+<h3 id="s11">1.1 两个壳与内核的关系</h3>
+<p>一次挂载<b>始终需要两个服务端坐标</b>：权威树在 <code>meta-server</code>，文件字节在 <code>data-server</code>。内核自带客户端 <code>grovefs mount</code> 面向 Linux FUSE；本仓把同一套客户端骨架搬到另外两个内核桥上，因此它们与内核客户端读写<b>同一棵树、同一批字节</b>，可以互为验证（内核段回归里就有一条"内核挂载读回客户端写入的字节"）。</p>
+<div class="tw">
+<table>
+  <tr><th>成员</th><th>内核桥</th><th>Cargo feature 组合</th><th>复用了内核的什么</th><th>产物</th></tr>
+  <tr>
+    <td><code>win/</code></td>
+    <td>WinFsp 签名驱动 → 盘符</td>
+    <td><code>remote-only</code>（不带 <code>fuser</code>/<code>libc</code>）</td>
+    <td>只要传输缝：<code>RemoteMeta</code> + <code>RemoteBackend</code> + <code>proto</code> 帧。WinFsp 回调面自己实现</td>
+    <td><code>grovefs-win.exe</code></td>
+  </tr>
+  <tr>
+    <td><code>mac/</code></td>
+    <td>macFUSE → 目录（挂载点）</td>
+    <td><code>remote-only,fuse-bridge</code></td>
+    <td>连 <code>fs_impl::GroveFS</code> 那套 FUSE 实现一起复用——与 <code>grovefs mount</code> 同一条挂载路径，只换宿主桥</td>
+    <td><code>grovefs-mac</code></td>
+  </tr>
+</table>
+</div>
+<p>两个 crate 都是<b>纯客户端</b>：服务端/控制面子树（本地引擎、meta-server、MCP、apikeys、<code>pg_store</code>）在 <code>native</code> 门后，不进依赖图。这条边界是可验的，不是口头承诺：</p>
+<pre><code><span class="cmt"># mac 壳（Linux 与 macOS 都能跑这条）</span>
+$C &amp;&amp; cargo tree -p grovefs-mac | grep -cE 'rusqlite|libsqlite3|postgres|tokio'
+<span class="out"># 0</span>
+
+<span class="cmt"># win 壳：按 Windows 目标三元组数一遍，连 fuser 也应为 0</span>
+cd win &amp;&amp; cargo tree --target x86_64-pc-windows-gnu \
+  | grep -cE 'rusqlite|libsqlite3|postgres|tokio|fuser'
+<span class="out"># 0</span></code></pre>
+<div class="warn">这条 grep 是<b>已知的回归高发点</b>：once 有 <code>optional</code> 依赖的调用泄漏进被客户端复用的模块，默认（全 feature）构建毫无感觉，<code>remote-only</code> 这条腿直接断链。改到 <code>grovefs/src/remote/</code> 或 <code>platform.rs</code> 时，务必按 <a href="#s44">4.4</a> 的两条最窄 feature 门各建一次。</div>
+
+<h3 id="s12">1.2 五分钟跑通</h3>
+<div class="scene">
+  <b>示例环境</b>：存储机 <code>10.0.0.1</code> 上已起 <code>meta-server</code>（50110）与 <code>data-server</code>（50100），存储根 <code>/data/gfs</code>，已建基视图 <code>alice</code>，集群带静态令牌 <code>s3cr3t</code>。客户机是一台 macOS（或一台只想快速验证协议、不想装 FUSE 的 Linux）。服务端怎么起来归内核文档管，本页只给挂载侧。
+</div>
+<pre><code><span class="cmt"># macOS：挂载到一个【已存在】的目录（macFUSE 不会替你建目录）</span>
+sudo mkdir -p /Volumes/alice
+$C/dist/grovefs-mac --meta-addr 10.0.0.1:50110 --data-addr 10.0.0.1:50100 \
+                    --view alice --token s3cr3t --mount /Volumes/alice
+<span class="out"># grovefs-mac: mounted view 'alice' at /Volumes/alice (read-only: false, content read-only: false) — press Ctrl-C to unmount</span>
+
+<span class="cmt"># 另一个终端：写一笔，然后确认字节落在存储机上而不是本机</span>
+mkdir /Volumes/alice/docs &amp;&amp; echo hi &gt; /Volumes/alice/docs/a.txt
+cat /Volumes/alice/docs/a.txt
+<span class="out"># hi</span>
+ssh 10.0.0.1 'ls /data/gfs/blocks | head'      <span class="cmt"># 看得到 00 01 02 … 的哈希桶目录</span>
+
+<span class="cmt"># 收工：Ctrl-C（走 session 的 unmounter，不留死卷）</span></code></pre>
+<pre><code><span class="cmt"># Windows（PowerShell，已装 WinFsp 2.1）：挂成盘符，或交给 WinFsp 挑空盘</span>
+.\grovefs-win.exe --meta-addr 10.0.0.1:50110 --data-addr 10.0.0.1:50100 `
+                  --view alice --token s3cr3t --mount M:
+<span class="out"># grovefs-win: mounted view 'alice' at M: (read-only: false, content read-only: false) — press Ctrl-C to unmount</span></code></pre>
+<div class="ok">两行的判据相同：<b>挂载横幅里的两个布尔值就是这个挂载的合同</b>。<code>read-only</code> 来自 <code>M_OPEN</code> ack 字节 [0]（派生透镜或只读 key）或你自己的 <code>--ro</code>；<code>content read-only</code> 来自字节 [2]（fork）。看到 <code>content read-only: true</code> 却还能改文件内容，是客户端版本落后（见 <a href="#s42">4.2</a>）。</div>
+
+<h3 id="s13">1.3 dist/ 预编译与版本核对</h3>
+<p><code>dist/</code> 是<b>入库的发布面</b>，让没有 Rust 工具链的机器也能试客户端。它有两个坑，先说清：</p>
+<div class="tw">
+<table>
+  <tr><th>文件</th><th>它是什么</th><th>它不是什么</th></tr>
+  <tr><td><code>dist/grovefs-mac</code></td><td>Linux x86_64 上构建的 mac 壳。fuser 在这条路上用纯 Rust 挂载，所以这个二进制<b>在 Linux 上就能真挂出一个 GroveFS 视图</b>；同一份源码在 macOS 上对着 macFUSE 4.x 构建即可</td><td>不是 macOS 上的安装产物（要真在 Mac 上用，自己 <code>cargo build -p grovefs-mac --release</code>）</td></tr>
+  <tr><td><code>dist/grovefs-win</code></td><td>同一个 crate 在 Linux 上的 <code>cfg(not(windows))</code> 分叉：能解析 CLI，然后打印"只能在 Windows 上跑"就退出</td><td><b>不是 Windows 可执行文件</b>，也不含 WinFsp FFI。真正的 <code>grovefs-win.exe</code> 必须在 Windows 上用 WinFsp 2.1 + MSVC/LLVM-MinGW 构建</td></tr>
+</table>
+</div>
+<pre><code><span class="cmt"># 拿到 dist 先做两件事：校验完整性、看清它是哪棵源码树</span>
+cd $C/dist &amp;&amp; sha256sum -c SHA256SUMS.txt
+<span class="out"># grovefs-mac: 成功</span>
+<span class="out"># grovefs-win: 成功</span>
+
+cat BUILDINFO.txt | head -12      <span class="cmt"># 客户端提交 ↔ 内核提交 ↔ rustc ↔ 构建日期</span></code></pre>
+<p><code>BUILDINFO.txt</code> 里那对提交坐标是<b>唯一有效的版本答案</b>：帧协议不带版本号（见 <a href="#s51">5.1</a>），"我的客户端能不能配你的服务端"只能靠它 + 一次真挂载来回答。当前这批是 <code>3bc087e</code>（源码 <code>3682e14</code>）对内核 <code>a8fcfae</code>，是<b>带 Data-Access Capability 握手</b>的第一批。</p>
+<div class="warn"><b>不要在正在使用的挂载上换 <code>dist/</code> 二进制</b>：一个二进制一个 inode，覆盖写会让活挂载的页缓存读回 <code>ETXTBSY</code> 类脏值。换二进制前先 <code>grep grovefs /proc/mounts</code> 看清有没有挂着的卷，卸掉再换；跨 inode 的 <code>cp</code>  truncate 覆盖同样是这个雷。</div>
+
+<h3 id="s14">1.4 服务端前置条件</h3>
+<p>客户端只是第三个进程，它<b>不会</b>替你建树、也不会替你起服务。挂载前，服务端侧必须已经：</p>
+<div class="tw">
+<table>
+  <tr><th>需要</th><th>由谁提供</th><th>缺了会怎样（客户端会看到）</th></tr>
+  <tr><td>视图已显式创建</td><td><code>grovefs view --meta-dir … create --view alice</code></td><td>按 explicit-view 文案拒绝：<code>view … does not exist</code>；<code>M_OPEN</code> 从不替客户端偷偷建一棵树</td></tr>
+  <tr><td>两个服务在听</td><td><code>meta-server --listen</code> + <code>data-server --listen</code></td><td><code>cannot reach meta-server …: Connection refused</code>，退出非零</td></tr>
+  <tr><td>凭据</td><td>服务端 <code>--token</code> / <code>--require-api-key</code> / <code>--data-access-key</code> 三选一或叠加</td><td>三道门各自的拒因原文会透传到客户端 stderr（见 <a href="#s31">3.1</a>）</td></tr>
+</table>
+</div>
+<p>客户端与服务端<b>必须来自同一代握手</b>。服务端升级加了 <code>M_OPEN</code> 字段时，旧客户端不是"少显示点信息"，而是可能把该只读的东西挂成可写——这就是本页反复出现的那条边界。</p>
+
+<h3 id="s15">1.5 自己构建</h3>
+<h4>macOS 客户端</h4>
+<pre><code><span class="cmt"># 前置：macFUSE 4.x（内核扩展要在系统设置里放行）+ pkgconf，fuser 的 build.rs 会去探测它</span>
+brew install --cask macfuse
+brew install pkgconf
+cd $C &amp;&amp; cargo build -p grovefs-mac --release
+<span class="out"># 产物：$C/target/release/grovefs-mac</span></code></pre>
+<p>Apple Silicon 上第一次挂载前，需在<em>系统设置 → 隐私与安全性</em>里允许第三方内核扩展。只想在 Linux 上做端到端验证则不需要任何东西：<code>cargo build -p grovefs-mac</code> 出来的二进制用 fuser 的纯 Rust 挂载就能挂（<code>dist/</code> 里那枚正是这么来的）。</p>
+<h4>Windows 客户端</h4>
+<ol>
+  <li>装 <b>WinFsp 2.1</b>（提供 <code>winfsp-x64.dll</code>）与 <b>WinFsp SDK / developer files</b>（import library + 头文件，bindgen 需要基于 <code>windows.h</code> 的 include 路径）。</li>
+  <li>装 <b>libclang</b>（<code>winfsp-sys</code> 跑 bindgen；找不到时设 <code>LIBCLANG_PATH</code>）。</li>
+  <li>用受支持的工具链：<b>MSVC</b>（推荐：VS Build Tools 的"使用 C++ 的桌面开发" + Windows SDK，<code>rustup default stable-msvc</code>）或 <b>LLVM-MinGW</b>（<code>build.rs</code> 会为 gnu/llvm ABI 发出对应的 delayload 链接参数）。<b>纯 GNU/MinGW-w64 gcc 不支持。</b></li>
+</ol>
+<pre><code><span class="cmt"># 从 win/ 里构建，或在工作区根加 -p grovefs-win</span>
+cd $C/win
+cargo build --release --target x86_64-pc-windows-msvc
+<span class="out"># 产物落在工作区 target/x86_64-pc-windows-msvc/release/grovefs-win.exe</span></code></pre>
+<p><code>build.rs</code> 是<b>自包含</b>的：它把 delay-load 指令（MSVC 走 <code>/DELAYLOAD:winfsp-x64.dll</code>，LLVM-MinGW 走 <code>-Wl,--delayload=…</code>）直接内联，而不是在构建期依赖 <code>winfsp</code> crate，所以这个 build script 在非 Windows 主机上也能编译。delay-load 的附带好处：链接期不需要 WinFsp 的 import library，DLL 在首次调用时从 WinFsp 安装位置解析。</p>
+<h4>没有 Windows、也没有 libclang 时怎么验证 cfg(windows) 代码</h4>
+<p><code>fs.rs</code> 与 <code>main.rs</code> 的挂载分支被 <code>#[cfg(windows)]</code> 门住，Linux 主机默认根本不编译它们。仓里带一个<b>纯 Rust 的 WinFsp API 镜像 stub</b>（<code>win/vendor/winfsp-api-mirror</code>，签名逐字抄自 <code>winfsp-0.13.2+winfsp-2.1</code>），用 <code>[patch.crates-io]</code> 换上它，就能让那段代码进入类型检查：</p>
+<pre><code><span class="cmt"># 在【工作区根】$C/Cargo.toml 临时加（注意：加在成员 win/Cargo.toml 里会被 cargo 忽略并警告）</span>
+<span class="cmt">#   [patch.crates-io]</span>
+<span class="cmt">#   winfsp = { path = "win/vendor/winfsp-api-mirror" }</span>
+cd $C &amp;&amp; cargo check -p grovefs-win --target x86_64-pc-windows-gnu
+<span class="cmt"># ⚠ 检查完必须还原：stub 没有 FFI，链接出来的二进制无法服务 IRP。</span>
+<span class="cmt">#   patch 会改动 Cargo.lock，收尾用 git checkout -- Cargo.lock 复原。</span></code></pre>
+<div class="ok">这一步确实抓到过两个真机构建同样会撞的编译错误（<code>DirInfo::&lt;255&gt;::new()</code> 的 const 泛型不参与推断；<code>host.mount(MountPoint::NextFreeDrive)</code> 要按值传，双重引用会被 HRTB 拒）。它<b>验证不到</b>的只有与真 crate 的 ABI 链接——那仍然需要上面那套真实 Windows 构建。</div>
+</section>
+<!-- ==================================================== 第二/三部分 -->
+<section id="p2">
+<h2 class="part">第二部分 · 挂载与参数</h2>
+
+<h3 id="s21">2.1 参数总表</h3>
+<p>两个壳共享同一组「连哪儿、连谁、用什么凭据」的参数；差异只在<b>挂载点形态</b>与<b>缓存控制</b>——缓存那一层 WinFsp 与 fuser/macFUSE 的表达方式不同，所以 win 侧没有那几个 flag。表以 <code>--help</code> 为准（本仓自己的 <code>dist/</code> 里那两枚二进制就能打印出来）。</p>
+<div class="tw">
+<table>
+  <tr><th>参数</th><th>win</th><th>mac</th><th>含义</th></tr>
+  <tr><td><code>--meta-addr HOST:PORT</code></td><td>必填</td><td>必填</td><td>元数据服务坐标，权威树在这里。<b>mac 侧可以写成 <code>primary,standby</code> 故障转移表</b></td></tr>
+  <tr><td><code>--data-addr HOST:PORT</code></td><td>必填</td><td>必填</td><td>数据服务坐标，对象字节在这里。v1 <b>只接受一个地址</b>（客户端不分条带，见 <a href="#s43">4.3</a>）</td></tr>
+  <tr><td><code>--view NAME</code></td><td>必填</td><td>必填</td><td>要呈现的视图名。名字必须先存在（基视图，或有定义的派生/别名/fork）</td></tr>
+  <tr><td><code>--mount TARGET</code></td><td>必填</td><td>必填</td><td>win：盘符 <code>M:</code>、目录路径，或 <code>next</code>（让 WinFsp 挑第一个空盘）；mac：<b>已存在</b>的目录</td></tr>
+  <tr><td><code>--token TOKEN</code></td><td>可选</td><td>可选</td><td>集群静态令牌，对应服务端 <code>--token</code>。空 = 只按无凭据尝试</td></tr>
+  <tr><td><code>--api-key ID:SECRET</code></td><td>可选</td><td>可选</td><td>面向 <code>--require-api-key</code> 服务端的可撤销按调用方凭据（<code>grovefs apikey create --for mount</code> 铸造）</td></tr>
+  <tr><td><code>--ro</code></td><td>可选</td><td>可选</td><td>无论服务端允许什么都强制只读。与服务端下发的只读是「或」关系</td></tr>
+  <tr><td><code>--no-cache</code></td><td>—</td><td>可选</td><td>严格跨客户端一致性：dentry/attr TTL 归零 + <code>FOPEN_DIRECT_IO</code>，绕过内核缓存直读</td></tr>
+  <tr><td><code>--cache-ttl SECS</code></td><td>—</td><td>可选</td><td>内核属性/目录项缓存 TTL，默认 2 秒；给了 <code>--no-cache</code> 就被忽略</td></tr>
+  <tr><td><code>-o, --options …</code></td><td>—</td><td>可选</td><td>透传给 fuser/macFUSE：<code>allow_root</code>、<code>allow_other</code>、<code>default_permissions</code>、<code>auto_unmount</code>、<code>volname=…</code>、<code>ro</code></td></tr>
+</table>
+</div>
+<p>两个壳都<b>没有</b> Data-Access Capability 相关的 flag：那是握手自己带的（见 <a href="#s31">3.1</a>），运维不需要也没有手填的入口。</p>
+
+<h3 id="s22">2.2 grovefs-mac 挂载</h3>
+<pre><code>grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
+            [--token TOKEN] [--api-key ID:SECRET] --mount DIR \
+            [--ro] [--no-cache] [--cache-ttl SECS] [-o OPT]...</code></pre>
+<ul>
+  <li><b>挂载点必须已存在</b>：macFUSE 往上挂，不替你建目录。习惯做法是 <code>/Volumes/alice</code>，并且 mac 侧默认会带上 <code>volname=GroveFS-&lt;view&gt;</code>，让访达显示成有名字的卷。</li>
+  <li><b>卸载只用 Ctrl-C</b>：信号处理里调 session 自带的 unmounter，正常收工会打印 <code>grovefs-mac: unmounted &lt;目录&gt;</code> 并且不留死卷。硬 <code>kill -9</code> 之后要用 <code>fusermount -u</code> 兜底。</li>
+  <li><b>挂载横幅是合同</b>：<code>mounted view 'x' at /y (read-only: R, content read-only: C)</code>。R 由 ack 字节 [0] 或 <code>--ro</code>/<code>-o ro</code> 决定，C 由字节 [2]（fork）决定；名字解到别的视图时，在此之前还会先打一行合同说明（见 <a href="#s32">3.2</a>）。</li>
+  <li><b>macOS 与 Linux 同一份源码</b>：在 Linux 上它用 fuser 的纯 Rust 挂载，因此可以当作「非内核客户端」的协议探针来跑真挂载——内核板子的 <code>client</code> 段正是这么用的。</li>
+</ul>
+
+<h3 id="s23">2.3 grovefs-win 挂载</h3>
+<pre><code>grovefs-win --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
+            [--token TOKEN] [--api-key ID:SECRET] --mount M:|next|DIR [--ro]</code></pre>
+<ul>
+  <li><b>盘符 / <code>next</code> / 目录三选一</b>。<code>next</code> 让 WinFsp 选第一个空闲盘符，脚本里比硬编码 <code>M:</code> 稳。</li>
+  <li><b>卷参数是写死的一套</b>（<code>VolumeParams</code>）：文件系统名 <code>GroveFs</code>、扇区 4096、名字长度 255、<code>case_preserved_names(true)</code> + <code>case_sensitive_search(false)</code>（保大小写显示、查找不区分，即 NTFS 的习惯），<code>persistent_acls</code> / <code>reparse_points</code> / <code>named_streams</code> 均关。</li>
+  <li><b>整卷只读在挂载期决定</b>：<code>read_only = --ro || 服务端 ack 字节 [0]</code>，命中时以 <code>read_only_volume(true)</code> 交给 WinFsp，整个卷在 IFS 层就是只读的。注意 fork 的<b>内容</b>只读不在这个旗里——它是运行期逐 IRP 判的，所以 fork 卷看起来是可写盘、但写文件内容会撞 <code>STATUS_MEDIA_WRITE_PROTECTED</code>。</li>
+  <li><b>内容只读是运行期逐个 IRP 判的</b>：fork 的 <code>write</code> 与 <code>set_file_size</code> 返回 <code>STATUS_MEDIA_WRITE_PROTECTED</code>，而 <code>mkdir</code>/<code>rename</code>/<code>unlink</code>/<code>chmod</code> 照常放行——判定集中在 <code>win/src/mapping.rs</code> 的一个函数里（见 <a href="#s33">3.3</a>）。</li>
+  <li><b>凭据形态</b>：安全边界是服务端那道门；文件只上报「存在 + 只读位」，没有 NT ACL（<a href="#s43">4.3</a>）。</li>
+  <li><b>在 Linux 上跑 <code>dist/grovefs-win</code></b> 只会看到：<code>grovefs-win: grovefs-win mounts via WinFsp and only runs on Windows (parsed: …; to test on this host run `cargo test`)</code>。这不是失败，是 <code>cfg(not(windows))</code> 分叉的正常行为。</li>
+</ul>
+
+<h3 id="s24">2.4 缓存与多客户端一致性</h3>
+<p>这里的缓存是<b>客户端主机内核</b>里的属性/目录项缓存，不是服务端的什么开关。默认 <code>--cache-ttl 2</code>：同一挂载点上的名字解析与 stat 结果最多复用 2 秒，也就是说<b>另一个客户端造成的结构变化，本机最多滞后约 2 秒看到</b>；要「对面一写、这边立刻可见」就挂 <code>--no-cache</code>，代价是每个 open 都带 <code>FOPEN_DIRECT_IO</code>，读直穿到 data-server。win 侧没这两个 flag，缓存时效由 WinFsp 的 volume/dir/file info 超时（本页 <a href="#s23">2.3</a> 那组卷参数）决。</p>
+<div class="warn"><b>fork 挂载不协商 writeback cache。</b>这是刻意的：内容写必须真的走到挂载这一层才能被拒——如果内核把写攒在页缓存里延迟回写，应用会「写成功、事后悄悄丢字节」，那比 <code>EROFS</code> 难查得多。所以 <code>content_ro</code> 为真时，客户端不参与 writeback 协商，第一次 <code>write(2)</code> 就返回 <code>EROFS</code>。mac 侧这条由复用的 <code>fs_impl::GroveFS</code> 保证，win 侧由 <code>mapping.rs</code> 的同一判定保证。</div>
+</section>
+
+<section id="p3">
+<h2 class="part">第三部分 · 权限与视图语义</h2>
+
+<h3 id="s31">3.1 三道门：token / api-key / Data-Access Capability</h3>
+<p>三道门<b>都在服务端把关</b>，客户端只负责「把凭据带上」和「把拒因原样显示出来」。它们可以叠加，叠加时是 AND。</p>
+<div class="tw">
+<table>
+  <tr><th>门</th><th>服务端开关</th><th>客户端要做什么</th><th>拒挂时客户端打印</th></tr>
+  <tr>
+    <td>集群静态令牌</td>
+    <td><code>meta-server --token</code> / <code>data-server --token</code></td>
+    <td>带 <code>--token</code>，两个平面都要对得上</td>
+    <td><code>meta-server rejected the access token</code></td>
+  </tr>
+  <tr>
+    <td>可撤销按调用方凭据</td>
+    <td><code>--require-api-key</code>（key 库在服务端的 <code>meta/api_keys.db</code>）</td>
+    <td>带 <code>--api-key ID:SECRET</code>（<code>apikey create --for mount</code> 铸，scope 必须是 <code>mount</code> 或 <code>any</code>）</td>
+    <td><code>no api key presented: …</code> / <code>authentication failed: unknown api key id</code> / <code>… invalid api key secret</code> / scope 不符时点名两个 scope</td>
+  </tr>
+  <tr>
+    <td><b>Data-Access Capability</b>（数据面准入）</td>
+    <td><code>meta-server --data-access-key HEX</code> 与<b>同一把</b> <code>data-server --data-access-key HEX</code></td>
+    <td><b>不需要任何 flag</b>：meta 在 <code>M_OPEN</code> 确认包尾部签发能力，客户端 latch 住，之后每个数据面 <code>OP_OPEN</code> 自动重放（<code>RemoteBackend::new_with_dac</code>）</td>
+    <td><code>grovefs-mac: data-server requires a Data-Access Capability minted by this cluster's meta-server (start that meta-server with the same --data-access-key, and mount against it)</code></td>
+  </tr>
+</table>
+</div>
+<p>第三道门要解决的是「<b>伪冒的 meta-server 把合法 data-server 当免费磁盘</b>」：只带 <code>--token</code> 时，任何一个知道令牌的元数据服务都能指挥客户端往诚实的 data-server 上读写。能力是 meta 用它与 data 之间共享的 HMAC 密钥现签的「我确实批准过这次挂载」凭据，data 独立验签；伪冒的 meta 签不出来，它的客户端就在第一个 <code>OP_OPEN</code> 被拒。它是<b>准入证明，不是按视图的数据 ACL</b>（数据键空间仍是一平面 KV）。</p>
+<div class="ok">对客户端运维只有两条实际后果：<b>(1)</b> 客户端不需要配密钥，也没有地方配；<b>(2)</b> 客户端必须与服务端同代——一个还不认识 <code>M_OPEN</code> 尾部字段的旧二进制，在这种部署上<b>会挂不上</b>，并打印上面那句服务端原话。「挂不上 + 这句原话」= 版本落后，不是集群坏了，也不是可以绕过去的告警。</div>
+
+<h3 id="s32">3.2 四种视图在客户端的表现</h3>
+<p>视图名先由 <code>M_OPEN</code> 解析成真实形态，确认包里带回三个尾部字段（解析后的名字、基视图名、种类）加上能力。客户端据此决定怎么挂，并把合同打进横幅。</p>
+<div class="tw">
+<table>
+  <tr><th>种类</th><th>谁来建</th><th>字节归属</th><th>挂载语义</th><th>mac 侧合同行（win 同形，前缀换 <code>grovefs-win:</code>）</th></tr>
+  <tr>
+    <td>基视图 base</td><td><code>view create</code></td><td>自己拥有</td><td>整树可写</td><td><i>（无额外行）</i></td>
+  </tr>
+  <tr>
+    <td>纯别名 alias</td><td><code>view alias --real R --name A</code></td><td>就是 R 的字节</td><td>整树可写，与 R 是同一棵树</td><td><code>alias view 'A' resolves to real view 'R' (full tree, writable)</code></td>
+  </tr>
+  <tr>
+    <td>派生透镜 derived</td><td><code>view define --base B --name D --rules F</code></td><td>B 的字节</td><td><b>整卷只读</b>（ack 字节 [0]）。写请去基视图</td><td><code>derived view 'D' over base 'B': read-only lens — write to base view 'B'</code></td>
+  </tr>
+  <tr>
+    <td>fork</td><td><code>view fork --base B --name F</code></td><td><b>结构与 B 分家，内容字节共享</b></td><td>结构可写（<code>mkdir</code>/<code>rename</code>/<code>unlink</code>/<code>chmod</code>），内容只读（ack 字节 [2]，写与截断 <code>EROFS</code>）</td><td><code>fork view 'F' of base 'B': independent tree — structure writable, content read-only (EROFS)</code></td>
+  </tr>
+</table>
+</div>
+<pre><code><span class="cmt"># fork：目录树是你的，文件内容不是</span>
+$K --meta-addr 10.0.0.1:50110 --data-addr 10.0.0.1:50100 --view lab --mount /Volumes/lab
+<span class="out"># grovefs-mac: fork view 'lab' of base 'alice': independent tree — structure writable, content read-only (EROFS)</span>
+<span class="out"># grovefs-mac: mounted view 'lab' at /Volumes/lab (read-only: false, content read-only: true) — press Ctrl-C to unmount</span>
+
+mkdir /Volumes/lab/review                       <span class="cmt"># 放行：这是结构操作</span>
+mv /Volumes/lab/docs/a.txt /Volumes/lab/review/  <span class="cmt"># 放行：改名不动内容</span>
+cat /Volumes/lab/review/a.txt                    <span class="cmt"># 可读：字节与基视图共享</span>
+printf 'x' | dd of=/Volumes/lab/review/a.txt bs=1 count=1 conv=notrunc
+<span class="out"># dd: failed to open: Read-only file system</span>
+<span class="cmt"># 注意：只读的是「改内容」。新建一个空文件（树操作）会成功，但它的第一笔写就被拒——</span>
+<span class="cmt"># 于是你看到一个 0 字节的文件留在那儿。这是预期形状，不是半写坏的文件。</span></code></pre>
+<div class="warn">基视图<b>不会</b>被 fork 的操作波及：fork 里改名、删名字只动它自己那棵结构树，共享字节仍被账本记着（这也是删 fork 不会误伤基视图数据的原因）。反过来，基视图上覆盖写内容，fork 读到的是同一批新字节——它们本来就是同一份内容。</div>
+
+<h3 id="s33">3.3 客户端是内容只读的唯一执行点</h3>
+<p>这是本页最需要被记住的一条。<b>服务端不 gate 数据字节流</b>：data-server 只认对象 key，它不知道也不关心这个 key 属于哪个视图、是不是 fork 共享的。于是「fork 的内容不许改」这条约定，唯一的执行位置就是挂载本身——mac 侧交给复用的 <code>fs_impl::GroveFS</code>（与 <code>grovefs mount</code> 同一条路径），win 侧集中在一个纯函数里：</p>
+<pre><code><span class="cmt"># win/src/mapping.rs —— 两个标志、一类操作，一个判定点（可在任意主机上单测）</span>
+pub enum Mutation { Content, Tree }
+
+pub fn refuse_mutation(read_only: bool, content_ro: bool, m: Mutation) -&gt; Option&lt;i32&gt; {
+    match m {
+        Mutation::Tree if read_only =&gt; Some(STATUS_MEDIA_WRITE_PROTECTED),
+        Mutation::Content if read_only || content_ro =&gt; Some(STATUS_MEDIA_WRITE_PROTECTED),
+        _ =&gt; None,
+    }
+}</code></pre>
+<p>读法：<b>整卷只读拒一切改动；内容只读只拒内容改动</b>（<code>write</code>、截断/改长度）。树操作（建目录、改名、删名、chmod）在 fork 上放行。mac 侧的规则形状一样，只是由 <code>fs_impl</code> 里的 <code>readonly</code> / <code>content_ro</code> 两参数承担。</p>
+<div class="ok">推论：握手每长一个字段，两个壳都要跟着改，否则不是「显示少一点信息」而是「把该拒的写放过去」。这就是 <a href="#s51">5.1</a> 那条纪律存在的原因，也是内核板子必须拿发布二进制（而不是内核自己的客户端）去挂真服务端的理由。</div>
+</section>
+<!-- ==================================================== 第四部分与附 -->
+<section id="p4">
+<h2 class="part">第四部分 · 排障与验证</h2>
+
+<h3 id="s41">4.1 挂不上：判据与处置</h3>
+<p>客户端的失败都是<b>启动期硬退</b>：打印一行 <code>grovefs-&lt;壳&gt;: &lt;原话&gt;</code> 到 stderr，非零退出，不会留着半个挂载点。下表每一行都能用一句真命令复现。</p>
+<div class="tw">
+<table>
+  <tr><th>看到的话</th><th>它真正是什么意思</th><th>处置</th></tr>
+  <tr>
+    <td><code>cannot reach meta-server …: Connection refused</code></td>
+    <td>坐标错、服务没起，或端口被防火墙挡</td>
+    <td>先确认 <code>meta-server</code> 在听这个地址（绑 <code>127.0.0.1</code> 的服务永远连不上远程客户机）；再试 <code>data-server</code></td>
+  </tr>
+  <tr>
+    <td><code>view 'X' does not exist on this meta-server (…): no tree and no definition — views are created explicitly, so unknown names are refused instead of becoming an empty tree; …</code></td>
+    <td><b>设计行为</b>：<code>M_OPEN</code> 从不替客户端建树</td>
+    <td>在服务端 <code>grovefs view --meta-dir … create --view X</code>（或给它一个派生/别名/fork 定义）后重挂</td>
+  </tr>
+  <tr>
+    <td><code>meta-server rejected the access token</code></td>
+    <td>服务端有 <code>--token</code>，本次没带或带错</td>
+    <td>补 <code>--token</code>；注意它是两平面共用的集群密令，不是按视图的权限</td>
+  </tr>
+  <tr>
+    <td><code>no api key presented: …</code> / <code>authentication failed: unknown api key id</code> / <code>… invalid api key secret</code> / 点名两个 scope 的那句</td>
+    <td>服务端 <code>--require-api-key</code>；缺 key / id 不存在 / secret 不对 / scope 不允挂载</td>
+    <td><code>grovefs apikey create --for mount</code> 重铸（明文只打印一次）；已搬走的设备用 <code>apikey rotate</code>；<code>mcp</code> scope 的 key 打不开挂载，这是双向最小权限</td>
+  </tr>
+  <tr>
+    <td><code>data-server requires a Data-Access Capability minted by this cluster's meta-server (start that meta-server with the same --data-access-key, and mount against it)</code></td>
+    <td><b>两种情形共用同一句话</b>：① 客户端二进制太老，不会 latch/重放能力；② 你挂的 <code>meta-server</code> 没配那把 key（或两平面 key 不一致），根本铸不出能力</td>
+    <td>先查客户端：读 <code>dist/BUILDINFO.txt</code> 的内核坐标是否早于 DAC 握手；再查服务端：两个服务的 <code>--data-access-key</code> 是否同一把。详见 <a href="#s42">4.2</a></td>
+  </tr>
+  <tr>
+    <td>macOS：<code>mount failed: … — is macFUSE installed and its kernel extension approved? (`brew install --cask macfuse`)</code>；Linux：<code>mount failed: …</code>（典型成因是 <code>/dev/fuse</code> 或 <code>fusermount</code> 不可用）</td>
+    <td>macFUSE 未装/未批准，或 <code>/dev/fuse</code>、<code>fusermount</code> 不可用</td>
+    <td>macOS：<code>brew install --cask macfuse</code> 并在系统设置里放行；Linux：装 <code>fuse3</code>，非 root 需 <code>/etc/fuse.conf</code> 开 <code>user_allow_other</code> 并配合 <code>-o allow_other</code></td>
+  </tr>
+  <tr>
+    <td><code>grovefs-win: … only runs on Windows (parsed: …)</code></td>
+    <td>你在 Linux 上跑了 <code>dist/grovefs-win</code>（它本就是 <code>cfg(not(windows))</code> 桩）</td>
+    <td>正常行为，不是故障：要验 win 侧的非 Windows 逻辑就 <code>cargo test</code>，要真挂载就得在 Windows 上用 WinFsp 构建的 <code>.exe</code></td>
+  </tr>
+</table>
+</div>
+<p>确认挂载是否真的活着，不要看目录能不能 <code>ls</code>（目录本身存在就能 <code>ls</code>）：</p>
+<pre><code>findmnt -rn --mountpoint /Volumes/alice                 <span class="cmt"># Linux / macOS</span>
+cat /mnt/alice/docs/a.txt                                <span class="cmt"># 读得动≠挂得动：先 findmnt</span>
+net use | findstr Grove                                   <span class="cmt"># Windows：看 WinFsp 提供的网络盘</span></code></pre>
+<div class="warn"><b>写断言前先验挂载活着。</b>内核回归套件里就吃过这个亏：挂载已死而后续 <code>echo &gt; file</code> 写进了一个空目录，脚本照样报出一串「绿色数字」——那说的是本地磁盘，不是 GroveFS。任何自动化验收都该先 <code>findmnt</code> 门控再写。</div>
+
+<h3 id="s42">4.2 静默降级的识别</h3>
+<p>协议不带版本号，所以「客户端比服务端旧」不一定报错。会报错的那一半是好的（DAC 就是这一类：直接拒挂并说原话）；<b>不会报错的那一半才是风险</b>：</p>
+<div class="tw">
+<table>
+  <tr><th>症状</th><th>成因</th><th>怎么定性</th></tr>
+  <tr>
+    <td>fork 视图挂上后，<b>改文件内容竟然成功</b>，而且基视图里同一个文件跟着变了</td>
+    <td>客户端不认识 <code>M_OPEN</code> ack 字节 [2]，把 fork 当普通视图挂；而服务端<b>不 gate 字节流</b>，没人拦这笔写</td>
+    <td>看挂载横幅：<b>没有 <code>content read-only</code> 这一项</b>，或 fork 该为 <code>true</code> 却报了 <code>false</code> → 二进制版本落后，立即重编/换 dist</td>
+  </tr>
+  <tr>
+    <td>派生透镜挂出来可写</td>
+    <td>同上形状：字节 [0] 没被读，或读了没参与挂载决策</td>
+    <td>横幅应为 <code>read-only: true</code>，且额外有一行 <code>derived view … read-only lens</code></td>
+  </tr>
+  <tr>
+    <td>挂载横幅里没有别名/派生/fork 那行合同说明，但读写都正常</td>
+    <td>只是缺定义尾（旧客户端停在字节 [2] 就不往下解），或这个视图本就是基视图</td>
+    <td>基视图本来就没那行；其他三种名字缺少该行才是版本信号。这一条是<b>纯观感</b>问题，不像上两行那样危险</td>
+  </tr>
+</table>
+</div>
+<pre><code><span class="cmt"># 不抱假设地问一句：这个二进制到底会不会解析 M_OPEN 的定义尾？</span>
+<span class="cmt"># release 且 strip 过的二进制里，错误文案仍在，可以当版本指纹用：</span>
+grep -c "view-definition tail" $C/dist/grovefs-mac
+<span class="out"># 1  = 当代（会读定义尾，也就带 DAC 重放）</span>
+<span class="out"># 0  = pre-DAC，在 --data-access-key 集群上会拒挂，在 fork 上会把内容挂成可写</span></code></pre>
+<div class="ok">为什么不拿时戳或文件名当版本判据：因为 <code>dist/</code> 会被重打，一个名字叫「旧版」的文件可能已经是新版。做负对照（验“旧客户端真的被拒”）时尤其重要：必须当场用内容探针确认它真的是旧的，否则那条断言会静默退化成恒真。</div>
+
+<h3 id="s43">4.3 v1 边界（不支持项）</h3>
+<div class="tw">
+<table>
+  <tr><th>项</th><th>现状</th><th>为什么</th></tr>
+  <tr><td>数据面条带（多 <code>data-server</code>）</td><td>只接受<b>一个</b> <code>--data-addr</code></td><td>条带在 <code>backend::sharded</code>，它是 <code>native</code> 门内的东西，<code>remote-only</code> 构建链不上它</td></tr>
+  <tr><td><code>--manager</code> 引导</td><td><b>没有这个 flag</b>，两个坐标必须显式给</td><td>内核 <code>mount</code> 可以从签名 roster 解析出两个地址；客户端壳尚未接这条，目前只能手写地址（mac 侧的 <code>--meta-addr</code> 可以写 <code>primary,standby</code>）</td></tr>
+  <tr><td>按用户/按视图的数据 ACL</td><td>无。<code>getuid()</code> 只作为审计归属发给 meta</td><td>访问控权靠 <code>--token</code> / <code>--api-key</code>（可附只读位）/ DAC；数据键空间是一平面 KV</td></tr>
+  <tr><td>win：POSIX 记录锁</td><td>不透过挂载暴露</td><td>GroveFS 有原语，到 WinFsp 字节范围锁的映射是未做的后续工作</td></tr>
+  <tr><td>win：NT ACL / 符号链 reparse point / 备用数据流</td><td>无。文件只报「存在 + 只读位」；符号链节点能表示但不渲染成 reparse point</td><td>与上一行同属 WinFsp 回调面的未完成部分（卷参数里也直接关掉了）</td></tr>
+  <tr><td>mac：多线程分发</td><td>单线程 session loop</td><td>fuser 的 <code>n_threads</code>/<code>clone_fd</code> 是 Linux 优化；macFUSE 就服一个环</td></tr>
+  <tr><td>mac：tags / resource fork / ACL</td><td>无</td><td>不造 macOS 专有元数据，树就是 GroveFS 视图，按 POSIX 形状呈现</td></tr>
+</table>
+</div>
+
+<h3 id="s44">4.4 改动后怎么验证</h3>
+<p>四层，从上到下代价递增；<b>前三层在任意 Linux 主机上都能跑</b>，不需要 Mac 或 Windows。</p>
+<h4>① 本地（本仓，无需任何服务端）</h4>
+<pre><code>cd $C
+cargo test                          <span class="cmt"># 工作区全部成员；win 的 mapping 单测共 11 条，含那对门判定</span>
+cargo clippy --workspace --all-targets
+cargo build --release -p grovefs-mac -p grovefs-win &amp;&amp; strip --strip-unneeded target/release/*</code></pre>
+<p>要验 <code>#[cfg(windows)]</code> 那段挂载代码，走 <a href="#s15">1.5</a> 最后的 vendor stub 路线（patch 只加在<b>工作区根</b>，验完连 <code>Cargo.lock</code> 一起复原）。</p>
+<h4>② 两条最窄 feature 门（在内核仓里跑）</h4>
+<p>默认（全 feature）构建绿了不算数——客户端链的是两条缩到最小的腿，可选依赖漏进被客户端复用的模块时只在这两条上暴露：</p>
+<pre><code>cd ../grovefs
+cargo build --lib --no-default-features --features remote-only
+cargo build --lib --no-default-features --features remote-only,fuse-bridge</code></pre>
+<h4>③ 端到端：内核板子的 <code>client</code> 段（拿发布二进制挂真服务端）</h4>
+<p>这一段回答的问题别的套件都回答不了：板子其余部分只跑内核自己的客户端 CLI，一个只对<b>外部客户端</b>生效的握手回归会一路绿灯过。A–G 七段共 <b>38 条断言</b>（带负对照 <b>39</b>），约 13 秒：SQLite / PG 两档控制面（含内核挂载读回客户端字节、同一棵树两个客户端）、未知视图拒挂、token 门两边、DAC 能力走通 <code>M_OPEN → OP_OPEN</code>（同 store 再起一对<b>无 DAC</b> 的服务验旧路径逐字节不变）、fork 结构可写而 <code>write(2)</code> 撞 <code>EROFS</code> 且基视图仍可写、派生透镜整卷只读、<code>--require-api-key</code> 认 <code>--api-key</code>。</p>
+<pre><code><span class="cmt"># 脚本在内核仓的 .build-bin/（被 /.*/ 排除，随检出走、不随 clone 走）</span>
+cd ../grovefs
+PRE_DAC_REV=&lt;一个 dist/ 还早于 DAC 握手的 grovefs-client 提交&gt; \
+  bash .build-bin/test_client.sh
+<span class="out"># ==================== SUMMARY: pass=39 fail=0 ====================</span>
+<span class="cmt"># 不带 PRE_DAC_REV 会自己跳过那条负对照：pass=38 fail=0</span>
+<span class="cmt"># $GROVEFS_CLIENT / $CLIENT_BIN 可改仓位置与所用二进制（默认 ../grovefs-client/dist/grovefs-mac）</span></code></pre>
+<div class="ok">负对照那一条的代价最高：它把「新客户端能挂上」与「旧客户端真的被拒」成对钉住——只前一半的话，只能证明集群默认不设防。所以它的判据写成了内容探针（<a href="#s42">4.2</a>）：拿到的二进制若已会解析定义尾，该条直接报红而不是默默跳过。</div>
+<h4>④ 真平台冒烟</h4>
+<p>Windows 上只能真机：WinFsp 2.1 环境里挂盘符，至少跑一遍 <code>mkdir</code> / 写读 / 改名 / 删，并在 fork 视图上确认 <code>write</code> 与改长度都返回写保护。macOS 上同理验 macFUSE 那条桥（<code>dist/</code> 里那个二进制替不了它，见 <a href="#s13">1.3</a>）。</p>
+</section>
+
+<section id="p5">
+<h2 class="part">附 · 对齐纪律与文档指针</h2>
+
+<h3 id="s51">5.1 与内核对齐的纪律</h3>
+<p>帧协议<b>没有版本号</b>：兼容性取决于两端对 <code>M_OPEN</code> 握手解析的宽严。两条规则由此而来，两个壳都按它实现：</p>
+<ul>
+  <li><b>服务端发的每个字段都要读。</b><code>M_OPEN</code> ack 字节 [0] = 只读视图（派生透镜，或只读 API key），字节 [1] = 可分页 readdir，字节 [2] = fork（结构可写、内容 <code>EROFS</code>）；尾部字段依次为解析后的视图名、基视图名、种类、Data-Access Capability。忽略字节 [2] 不是观感问题：内容门住在挂载里，服务端从不 gate 字节流。</li>
+  <li><b>meta 平面交给 data 平面的东西，要原样重放。</b><code>meta-server --data-access-key</code> 在 <code>M_OPEN</code> 现签的能力，两个壳都通过 <code>RemoteBackend::new_with_dac</code> 逐次带给 <code>data-server</code> 验签。</li>
+</ul>
+<div class="warn"><b>采用新握手字段的那一笔改动，必须同时重打 <code>dist/</code>。</b>否则「零工具链试客户端」的入口会继续踩刚修完的那个坑。每批 <code>dist/</code> 都要：换两枚二进制（release + strip）、重算 <code>SHA256SUMS.txt</code>、改写 <code>BUILDINFO.txt</code> 的双仓坐标；收尾跑一次 <code>sha256sum -c</code>。上一批是 <code>b13f968</code> @ 内核 <code>3ba071c</code>（早于 DAC），本批是 <code>3682e14</code> @ 内核 <code>a8fcfae</code>（即 <code>3bc087e</code> 这笔 dist 重打）。</div>
+<p>反向的约束也存在：内核侧文档里复述的 <code>client</code> 段断言条数（内核仓 <code>README.md</code> / <code>USAGE.md</code> / <code>docs/docs.html</code> 三处）以它自己的板实跑为源，由内核仓的文档对账脚本兼管——改了本层行为、动了 A–G 任何一段的断言数，就要在内核仓同步那三处。</p>
+
+<h3 id="s52">5.2 权威文档指针</h3>
+<div class="tw">
+<table>
+  <tr><th>位置</th><th>管什么</th></tr>
+  <tr><td>本页</td><td>平台客户端的使用：安装/构建、挂载参数、三道门、四种视图、排障、验证套路</td></tr>
+  <tr><td><code>README.md</code>（仓根）</td><td>仓结构、两个壳与内核的 feature 接缝、与内核对齐的简版清单</td></tr>
+  <tr><td><code>mac/README.md</code> / <code>win/README.md</code></td><td>单平台细节：macFUSE/WinFsp 前置、构建链、v1 范围</td></tr>
+  <tr><td><code>dist/BUILDINFO.txt</code></td><td>本批预编译的确切坐标与行为差异</td></tr>
+  <tr><td>内核仓 <code>USAGE.md</code> / <code>docs/docs.html</code> / <code>docs/deploy.html</code></td><td><b>服务端那侧的权威</b>：部署拓扑、视图治理、治理面与密钥体系、全套回归板（路径为内核仓内的 <code>docs/</code>，与本页不在同一个仓，故不给相对链接）</td></tr>
+</table>
+</div>
+<div class="chnav"><span>上一节：<a href="#s51">5.1 与内核对齐的纪律</a></span><span>回到：<a href="#s11">1.1 两个壳与内核的关系</a></span></div>
+
+<footer>
+  <p><code>grovefs-client</code> · 平台客户端使用说明 · 本页为静态自包含文档，无外部资源依赖。本页引用的命令输出与断言条数取自 2026-11-21 实跑（内核板子 <code>client</code> 段 38/39 条，另有一轮同场景的 27 条本机端到端探针）；行为以当前代码为准，版本坐标见 <code>dist/BUILDINFO.txt</code>。</p>
+  <p>许可：Apache License 2.0，见仓根 <a href="https://www.apache.org/licenses/LICENSE-2.0">许可证正文</a>与 <code>LICENSE</code> 文件。</p>
+</footer>
+</section>
+</main>
+</div>
+</body>
+</html>

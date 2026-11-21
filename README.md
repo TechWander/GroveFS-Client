@@ -8,6 +8,10 @@ to the **same** cluster services over the **same** framed TCP protocol: the
 central `meta-server` for the authoritative view tree and a `data-server` for
 object bytes.
 
+Full usage guide — installation, every flag, the three admission gates, what each
+view kind does to a mount, troubleshooting, and how to verify a change:
+**[`docs/usage.html`](docs/usage.html)** (self-contained page, open it in a browser).
+
 | member | kernel bridge | state |
 |--------|---------------|-------|
 | [`win/`](win/README.md) | WinFsp | Working: mounts a view as a drive letter (`M:`, `next`). Re-implements the WinFsp callback surface. |
