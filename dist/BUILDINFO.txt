@@ -5,8 +5,9 @@ rustc: rustc 1.99.0 (b940084d7 2026-09-28)
 cargo: cargo 1.99.0 (5f94df478 2026-08-27)
 source: grovefs-client 731fbdb (clean working tree — the two binaries,
         SHA256SUMS.txt and this file are the only paths this drop touches;
-        the two commits on top of it are docs-only, no src/ path, so there is
-        nothing here for them to change)
+        the three commits on top of it ship nothing new: two are docs-only, the
+        third adds #[cfg(test)] CLI-contract tests and was checked by rebuilding
+        — both binaries came out byte-identical to the SHA256SUMS.txt above)
         against sibling grovefs kernel at 963553c (branch exp/treedb-integration;
         verified clean for src/, tests/, Cargo.toml and Cargo.lock at build time,
         so these clients link exactly the tree that commit pins)

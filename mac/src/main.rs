@@ -331,8 +331,46 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::roster_coords;
+    use super::{roster_coords, Cli};
+    use clap::error::ErrorKind;
+    use clap::Parser;
     use grovefs::manager::Roster;
+
+    /// `--manager` stands in for BOTH coordinates, so it has to parse alone and
+    /// be refused beside either one. The kernel board proves this against a live
+    /// manager for whichever binary it mounts; these two pin the same shape for
+    /// each shell without a network, because a flag renamed or downgraded to a
+    /// "precedence" rule on one side would otherwise only surface on the host
+    /// that builds it.
+    #[test]
+    fn manager_alone_is_a_complete_coordinate_source() {
+        let cli = Cli::try_parse_from([
+            "grovefs-mac", "--manager", "10.0.0.5:50120", "--view", "alice", "--mount", "/tmp/m",
+        ])
+        .unwrap();
+        assert_eq!(cli.manager.as_deref(), Some("10.0.0.5:50120"));
+        assert!(
+            cli.meta_addr.is_none() && cli.data_addr.is_none(),
+            "the manager owns both coordinates"
+        );
+        // The key file is deliberately NOT clap-required: the reason it is needed
+        // (an unverified roster lets someone else choose where we connect) is
+        // spelled out at resolution time, and GROVEFS_ROSTER_KEY_FILE is a legal
+        // way to supply it, which a `required` flag could not express.
+        assert!(cli.roster_key_file.is_none());
+    }
+
+    #[test]
+    fn manager_and_a_typed_coordinate_are_a_conflict_not_a_precedence() {
+        for other in ["--meta-addr", "--data-addr"] {
+            let err = Cli::try_parse_from([
+                "grovefs-mac", "--manager", "10.0.0.5:50120", other, "10.0.0.9:50111", "--view",
+                "alice", "--mount", "/tmp/m",
+            ])
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{other}: {err}");
+        }
+    }
 
     fn roster(meta: &[&str], data: &[&str]) -> Roster {
         Roster {

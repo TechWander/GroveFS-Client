@@ -344,8 +344,46 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::roster_coords;
+    use super::{roster_coords, Cli};
+    use clap::error::ErrorKind;
+    use clap::Parser;
     use grovefs::manager::Roster;
+
+    /// The same CLI contract the mac shell is held to, and the reason it is
+    /// duplicated here rather than trusted to look alike: this crate is the one
+    /// neither the kernel board nor a Linux host ever mounts, so the only thing
+    /// that can catch `--manager` drifting on this side is a test that runs
+    /// everywhere. `--manager` has to parse alone (it owns both coordinates) and
+    /// be refused as a CONFLICT beside either hand-typed one, never resolved by
+    /// precedence.
+    #[test]
+    fn manager_alone_is_a_complete_coordinate_source() {
+        let cli = Cli::try_parse_from([
+            "grovefs-win", "--manager", "10.0.0.5:50120", "--view", "alice", "--mount", "M:",
+        ])
+        .unwrap();
+        assert_eq!(cli.manager.as_deref(), Some("10.0.0.5:50120"));
+        assert!(
+            cli.meta_addr.is_none() && cli.data_addr.is_none(),
+            "the manager owns both coordinates"
+        );
+        // Not clap-required on purpose: GROVEFS_ROSTER_KEY_FILE is a legal way to
+        // supply the key, and the message explaining why it is needed is written
+        // at resolution time.
+        assert!(cli.roster_key_file.is_none());
+    }
+
+    #[test]
+    fn manager_and_a_typed_coordinate_are_a_conflict_not_a_precedence() {
+        for other in ["--meta-addr", "--data-addr"] {
+            let err = Cli::try_parse_from([
+                "grovefs-win", "--manager", "10.0.0.5:50120", other, "10.0.0.9:50111", "--view",
+                "alice", "--mount", "M:",
+            ])
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{other}: {err}");
+        }
+    }
 
     fn roster(meta: &[&str], data: &[&str]) -> Roster {
         Roster {
