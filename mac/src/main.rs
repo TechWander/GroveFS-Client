@@ -331,7 +331,7 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{roster_coords, Cli};
+    use super::{resolve_addrs, roster_coords, Cli};
     use clap::error::ErrorKind;
     use clap::Parser;
     use grovefs::manager::Roster;
@@ -370,6 +370,23 @@ mod tests {
             .unwrap_err();
             assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{other}: {err}");
         }
+    }
+
+    /// Verification comes before the request, and this pins the ORDER rather
+    /// than the text: `lookup` failures are wrapped as "asking manager …", so a
+    /// refusal that does not carry that prefix proves nothing was ever sent.
+    /// Nothing listens on 127.0.0.1:1, which is what makes the order observable
+    /// without a cluster (the kernel board checks the same refusal against a live
+    /// manager, for the one binary it actually mounts).
+    #[test]
+    fn a_manager_without_a_key_is_refused_before_it_is_asked() {
+        let cli = Cli::try_parse_from([
+            "grovefs-mac", "--manager", "127.0.0.1:1", "--view", "alice", "--mount", "/tmp/m",
+        ])
+        .unwrap();
+        let err = resolve_addrs(&cli).unwrap_err().to_string();
+        assert!(err.contains("--roster-key-file"), "{err}");
+        assert!(!err.contains("asking manager"), "the manager was contacted: {err}");
     }
 
     fn roster(meta: &[&str], data: &[&str]) -> Roster {
