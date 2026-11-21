@@ -50,7 +50,7 @@ cargo tree --target x86_64-pc-windows-gnu \
 
 | file | compiled on | role |
 |------|-------------|------|
-| `src/mapping.rs` | **every host** | WinFsp-free translation: path decomposition, `FILETIME` epoch math, Windows `FILE_ATTRIBUTE_*` bits, NTSTATUS codes, `NodeInfo → file-info` projection, `MetaError → NTSTATUS`. Unit-tested here on Linux. |
+| `src/mapping.rs` | **every host** | WinFsp-free translation: path decomposition, `FILETIME` epoch math, Windows `FILE_ATTRIBUTE_*` bits, NTSTATUS codes, `NodeInfo → file-info` projection, `MetaError → NTSTATUS`, and the read-only / content-read-only write gate. Unit-tested here on Linux. |
 | `src/fs.rs` | `#[cfg(windows)]` | The thin `winfsp::filesystem::FileSystemContext` implementation: marshals `U16CStr` names and WinFsp's `FileInfo`/`FileSecurity`/`VolumeInfo` to and from `mapping`'s plain integers. |
 | `src/main.rs` | every host | CLI (`--meta-addr/--data-addr/--view/--token/--api-key/--mount/--ro`). On Windows it wires `RemoteMeta`+`RemoteBackend` into a `FileSystemHost` and mounts; on other hosts `run()` is a compiling stub that points you at `cargo test`. |
 
@@ -142,11 +142,25 @@ at link time — the DLL is resolved from the WinFsp install at first call.
 
 `--mount next` picks the first free drive letter; `--ro` forces read-only even
 if the view is writable. A view the server reports as *derived* (a virtual,
-read-only lens) is mounted read-only automatically. Press `Ctrl-C` to unmount.
+read-only lens) is mounted read-only automatically. A view reported as a
+**fork** mounts with its tree writable (`mkdir`/`rename`/`delete` are served)
+but its CONTENT read-only — `write` and `set_file_size` return
+`STATUS_MEDIA_WRITE_PROTECTED`, because those bytes belong to the base view.
+Both flags come from the `M_OPEN` ack, and the content flag is enforced HERE:
+the server never gates the byte stream, so this client must be rebuilt
+whenever the kernel's handshake grows a field. Press `Ctrl-C` to unmount.
+
+When the cluster's `meta-server` runs with `--data-access-key`, the
+Data-Access Capability it mints at `M_OPEN` is latched and replayed on every
+data-plane `OP_OPEN` automatically — no flag to pass. A `data-server` in
+verify mode refuses a client that carries none, so an out-of-date binary fails
+at mount with the server's refusal text rather than silently losing writes.
 
 ## v1 scope
 
-* Single `data-server` for the data plane (no client-side striping).
+* Single `data-server` for the data plane (no client-side striping —
+  `backend::sharded` is `native`-gated, so a `remote-only` build cannot link
+  it; `--data-addr` is one address).
 * No POSIX record locks surfaced through the mount (GroveFS has the primitive;
   mapping it to WinFsp byte-range locks is future work).
 * No NT ACLs: security is the server-side credential gate (`--token` /

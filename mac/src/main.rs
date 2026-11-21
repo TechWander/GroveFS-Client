@@ -103,14 +103,44 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
         grovefs::platform::getuid(),
         &cli.api_key,
     )?;
-    // A DERIVED (virtual, read-only) view must be read-only at the mount too;
-    // capture the M_OPEN ack flag before boxing the provider.
+    // The `M_OPEN` ack is the mount's contract, and this client reads the SAME
+    // capability bytes the Linux `grovefs mount` does: [0] marks a read-only
+    // view (a server-side DERIVED lens, or a read-only API key) — the whole
+    // mount is read-only; [2] marks a FORK — the tree is writable, the CONTENT
+    // is shared with the base view, so writes/truncates must come back EROFS.
+    // Handing a fork out as fully writable is not a cosmetic miss: the server
+    // does not gate the byte stream, so this layer is the only enforcement
+    // (see the version-consistency note in the kernel manual §15.1).
     let view_ro = rm.is_readonly_view();
+    let content_ro = rm.is_content_ro_view();
+    // Data-Access Capability for a `data-server --data-access-key`: minted by
+    // the meta-server at `M_OPEN`, replayed verbatim on every data-plane
+    // `OP_OPEN`. Empty when the deployment issues none (pre-DAC path).
+    let dac = rm.data_access_capability();
+    match rm.def_kind() {
+        "fork" => eprintln!(
+            "grovefs-mac: fork view '{v}' of base '{b}': independent tree — structure writable, content read-only (EROFS)",
+            v = cli.view,
+            b = rm.def_base_view()
+        ),
+        "derived" => eprintln!(
+            "grovefs-mac: derived view '{v}' over base '{b}': read-only lens — write to base view '{b}'",
+            v = cli.view,
+            b = rm.def_base_view()
+        ),
+        "alias" => eprintln!(
+            "grovefs-mac: alias view '{v}' resolves to real view '{r}' (full tree, writable)",
+            v = cli.view,
+            r = rm.resolved_view()
+        ),
+        _ => {}
+    }
     let meta: std::sync::Arc<dyn MetaProvider> = std::sync::Arc::new(rm);
 
-    // 2. Object bytes over the LAN (single data-server; no striping in v1).
+    // 2. Object bytes over the LAN (single data-server; no striping in v1 —
+    //    `backend::sharded` is `native`-gated, so a client build cannot link it).
     let backend: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(
-        RemoteBackend::new_with_creds(&cli.data_addr, &cli.token, &cli.api_key)?,
+        RemoteBackend::new_with_dac(&cli.data_addr, &cli.token, &cli.api_key, &dac)?,
     );
 
     // 3. Read-only is the CLI flag, an `-o ro`, or a server-side derived lens.
@@ -118,11 +148,15 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let read_only = cli.ro || o_ro || view_ro;
 
     // The SAME FUSE implementation `grovefs mount` uses, fed the remote seam.
+    // `content_ro` is forwarded verbatim, so the fork gets the kernel-mount
+    // behaviour for free: EROFS on write/truncate, no writeback-cache
+    // negotiation (the refusal lands on the first `write(2)`), while
+    // mkdir/rename/unlink/chmod stay served.
     let fs = GroveFS::new(
         meta,
         backend,
         read_only,
-        false, // content stays writable unless the whole mount is read-only
+        content_ro,
         cli.no_cache,
         true, // READDIRPLUS
         cli.cache_ttl,
@@ -175,7 +209,7 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     })?;
 
     eprintln!(
-        "grovefs-mac: mounted view '{}' at {} (read-only: {read_only}) — press Ctrl-C to unmount",
+        "grovefs-mac: mounted view '{}' at {} (read-only: {read_only}, content read-only: {content_ro}) — press Ctrl-C to unmount",
         cli.view,
         mountpoint.display()
     );

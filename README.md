@@ -60,7 +60,7 @@ feature) and only mounts it through fuser's macFUSE backend.
 cargo test
 
 # Per member.
-cargo test -p grovefs-win          # 10 mapping tests on Linux/macOS hosts
+cargo test -p grovefs-win          # 11 mapping tests on Linux/macOS hosts
 cargo run  -p grovefs-mac -- --help
 
 # Real Windows binary (needs WinFsp 2.1 + MSVC or LLVM-MinGW, see win/README).
@@ -71,7 +71,29 @@ cargo build -p grovefs-win --release --target x86_64-pc-windows-msvc
 cargo build -p grovefs-mac --release
 ```
 
-Binaries land in the workspace `target/` directory.
+Binaries land in the workspace `target` directory.
+
+## Staying in sync with the kernel
+
+The framed protocol carries **no version number**: compatibility is decided by
+how strictly each side parses the `M_OPEN` handshake. Two rules follow, and
+both clients implement them:
+
+* **Read every field the current server sends.** `M_OPEN` ack byte [0] marks a
+  read-only view (a DERIVED lens, or a read-only API key), byte [2] marks a
+  FORK (structure writable, content `EROFS`), and the tail names what the
+  mounted view resolved to. Ignoring byte [2] is not cosmetic: the content gate
+  lives in the mount, the server never gates the byte stream.
+* **Replay what the meta plane hands the data plane.** A `meta-server
+  --data-access-key` mints a Data-Access Capability at `M_OPEN`; both clients
+  forward it to every `data-server OP_OPEN` (`RemoteBackend::new_with_dac`), so
+  a `--data-access-key` cluster mounts normally and refuses an out-of-date
+  binary with the server's own refusal text instead of degrading silently.
+
+Practically: rebuild these clients against the kernel you deploy, and refresh
+`dist/` in the same change that adopts a new handshake field. The kernel board
+runs the shipped `dist/grovefs-mac` against its own servers precisely so this
+pairing is tested rather than assumed.
 
 ## License
 

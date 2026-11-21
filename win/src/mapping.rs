@@ -197,6 +197,41 @@ pub fn meta_err_to_status(e: MetaError) -> i32 {
     }
 }
 
+// ---- write gating (the two flags the `M_OPEN` ack carries) ----------------
+
+/// Which kind of mutation a WinFsp callback performs, as seen by the volume.
+///
+/// The kernel mount (`grovefs/src/fs_impl.rs`) enforces the SAME split, and it
+/// is the server's view governance that defines it: `read_only` is the whole
+/// volume being read-only (a DERIVED lens, a read-only API key, or `--ro`),
+/// while `content_ro` is a FORK — the tree is the caller's to organize, the
+/// bytes are shared with the base view, so only the BYTES are off limits.
+/// Lumping the two together is what makes a fork mount useless; letting content
+/// through is what lets a fork damage its base.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mutation {
+    /// Changes an object's BYTES: a data write, or a truncate/extend of the
+    /// backing object (`set_file_size`).
+    Content,
+    /// Changes the TREE only: create, delete, rename, attributes. Creating an
+    /// empty file is a tree operation — the fork may lay out its own shape, and
+    /// the first BYTES written into it are what the content gate refuses (the
+    /// same order the kernel mount documents: an empty new file, then `EROFS`
+    /// on its first `write(2)`).
+    Tree,
+}
+
+/// The gate every mutating callback runs through: `Some(NTSTATUS)` to refuse,
+/// `None` to serve. Content needs both flags clear; tree mutations only need
+/// the volume itself to be writable.
+pub fn refuse_mutation(read_only: bool, content_ro: bool, m: Mutation) -> Option<i32> {
+    match m {
+        Mutation::Tree if read_only => Some(STATUS_MEDIA_WRITE_PROTECTED),
+        Mutation::Content if read_only || content_ro => Some(STATUS_MEDIA_WRITE_PROTECTED),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,6 +329,28 @@ mod tests {
         assert_eq!(meta_err_to_status(MetaError::Db("x".into())), STATUS_INTERNAL_ERROR);
         // the status values are negative i32 (high bit set), as NTSTATUS requires
         assert!(STATUS_OBJECT_NAME_NOT_FOUND < 0);
+    }
+
+    #[test]
+    fn content_gate_is_stricter_than_tree_gate() {
+        // Writable volume: both served.
+        assert_eq!(refuse_mutation(false, false, Mutation::Tree), None);
+        assert_eq!(refuse_mutation(false, false, Mutation::Content), None);
+        // FORK (content read-only): the tree stays writable, the bytes do not.
+        assert_eq!(refuse_mutation(false, true, Mutation::Tree), None);
+        assert_eq!(
+            refuse_mutation(false, true, Mutation::Content),
+            Some(STATUS_MEDIA_WRITE_PROTECTED)
+        );
+        // Whole volume read-only (derived lens / --ro): both refused.
+        assert_eq!(
+            refuse_mutation(true, false, Mutation::Tree),
+            Some(STATUS_MEDIA_WRITE_PROTECTED)
+        );
+        assert_eq!(
+            refuse_mutation(true, true, Mutation::Content),
+            Some(STATUS_MEDIA_WRITE_PROTECTED)
+        );
     }
 
     #[test]

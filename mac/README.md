@@ -79,6 +79,12 @@ grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
   as the Windows client.
 * `--ro` forces read-only; an `-o ro` does the same, and a view the server
   reports as *derived* is mounted read-only automatically.
+* A view the server reports as a **fork** mounts differently: its directory
+  tree is yours (`mkdir`/`rename`/`unlink`/`chmod` are served) while its
+  CONTENT is shared with the base view, so `write`/truncate come back `EROFS`
+  from the first `write(2)`. The flag arrives in `M_OPEN` ack byte [2] and is
+  enforced HERE — the server never gates the byte stream — which is why this
+  client must be rebuilt whenever the kernel's handshake grows a field.
 * `--no-cache` turns on strict cross-client coherence (dentry/attr TTL 0 +
   direct IO); otherwise the kernel cache TTL is `--cache-ttl` (default 2 s).
 * `-o` passes extra fuser/macFUSE options (`allow_root`, `allow_other`,
@@ -89,6 +95,11 @@ grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
 ## v1 scope
 
 * Single `data-server` for the data plane (no client-side striping).
+* No Data-Access Capability to configure by hand: when the cluster's
+  `meta-server` runs with `--data-access-key`, the capability it mints at
+  `M_OPEN` is latched and replayed on every data-plane `OP_OPEN` automatically
+  (a `data-server --data-access-key` refuses a client that never passed a
+  genuine meta admission, so an out-of-date binary simply fails to mount).
 * Single-threaded session dispatch (fuser `n_threads`/`clone_fd` is a Linux
   optimisation; macFUSE serves the one loop).
 * No macOS-specific metadata features (tags, resource forks, ACLs); the tree is

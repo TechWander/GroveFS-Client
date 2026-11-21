@@ -88,22 +88,59 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
         0,
         &cli.api_key,
     )?;
-    // The `M_OPEN` ack byte flags a DERIVED (virtual, read-only) view. Capture
-    // it before the concrete client is boxed behind the trait object.
+    // The `M_OPEN` ack is the mount's contract, and the same three capability
+    // bytes the Linux `grovefs mount` reads drive this mount:
+    //   [0] read-only view (a server-side DERIVED lens, or a read-only key),
+    //   [2] FORK view — its tree is the caller's to organize, its BYTES are the
+    //       base's, so content writes come back `EROFS`.
+    // A pre-three-byte client that ignored byte [2] would hand out a "writable"
+    // fork mount whose writes the server does not gate (see USAGE §15.1), so
+    // this client must keep parsing the ack as it grows.
     let view_ro = rm.is_readonly_view();
+    let content_ro = rm.is_content_ro_view();
+    // Data-Access Capability for a `data-server --data-access-key`: minted by
+    // the meta-server at `M_OPEN`, replayed verbatim on every data-plane
+    // `OP_OPEN`. Empty when the deployment issues none — the pre-DAC path.
+    // Forwarding it is what lets a mount that passed a genuine meta admission
+    // reach the data plane at all once the server starts verifying.
+    let dac = rm.data_access_capability();
+    // What the mounted name resolved to, so the operator sees the contract at
+    // mount time rather than inferring it from the first failing write.
+    match rm.def_kind() {
+        "fork" => eprintln!(
+            "grovefs-win: fork view '{v}' of base '{b}': independent tree — structure writable, content read-only",
+            v = cli.view,
+            b = rm.def_base_view()
+        ),
+        "derived" => eprintln!(
+            "grovefs-win: derived view '{v}' over base '{b}': read-only lens — write to the base view",
+            v = cli.view,
+            b = rm.def_base_view()
+        ),
+        "alias" => eprintln!(
+            "grovefs-win: alias view '{v}' resolves to real view '{r}' (full tree, writable)",
+            v = cli.view,
+            r = rm.resolved_view()
+        ),
+        _ => {}
+    }
     let meta: Arc<dyn MetaProvider> = Arc::new(rm);
 
-    // 2. Object bytes over the LAN (single data-server; no striping in v1).
-    let backend: Arc<dyn StorageBackend> = Arc::new(RemoteBackend::new_with_creds(
+    // 2. Object bytes over the LAN (single data-server; no striping in v1 — the
+    //    sharded backend is `native`-gated, so a `remote-only` client cannot
+    //    link it; a comma-separated `--data-addr` is therefore one address).
+    let backend: Arc<dyn StorageBackend> = Arc::new(RemoteBackend::new_with_dac(
         &cli.data_addr,
         &cli.token,
         &cli.api_key,
+        &dac,
     )?);
 
-    // 3. Read-only is the CLI flag OR a server-side derived lens the `M_OPEN`
-    //    ack marked virtual (a physical view stays writable).
+    // 3. Two independent gates, exactly as the Linux mount splits them:
+    //    the WHOLE volume is read-only for `--ro` or a derived lens; a FORK
+    //    keeps its tree writable and refuses CONTENT writes instead.
     let read_only = cli.ro || view_ro;
-    let fs = GroveWinFs::new(meta, backend, read_only);
+    let fs = GroveWinFs::new(meta, backend, read_only, content_ro);
 
     // 4. Volume shape. WinFsp needs a filesystem id + sane geometry.
     let mut vp = VolumeParams::new();
@@ -137,7 +174,7 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     host.start()?;
     eprintln!(
-        "grovefs-win: mounted view '{}' at {mount_arg} (read-only: {read_only}) — press Ctrl-C to unmount",
+        "grovefs-win: mounted view '{}' at {mount_arg} (read-only: {read_only}, content read-only: {content_ro}) — press Ctrl-C to unmount",
         cli.view
     );
 

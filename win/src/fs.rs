@@ -49,6 +49,14 @@ pub struct GroveWinFs {
     /// Client-side read-only mount (`--ro`) OR a server-derived lens: every
     /// mutating callback is refused with a write-protected status.
     read_only: bool,
+    /// FORK view: the tree is ours to organize, the bytes are shared with the
+    /// base view, so `write`/`set_file_size` are refused while create, delete,
+    /// rename and attributes pass. The kernel mount enforces the identical
+    /// split from the same `M_OPEN` ack byte (`grovefs/src/fs_impl.rs`), and it
+    /// is a CLIENT-side gate — the server never gates the byte stream, so a
+    /// platform client that ignored this byte would hand out a writable fork
+    /// mount whose writes reach the base view's objects.
+    content_ro: bool,
 }
 
 impl GroveWinFs {
@@ -56,8 +64,14 @@ impl GroveWinFs {
         meta: Arc<dyn MetaProvider>,
         backend: Arc<dyn StorageBackend>,
         read_only: bool,
+        content_ro: bool,
     ) -> Self {
-        Self { meta, backend, read_only }
+        Self {
+            meta,
+            backend,
+            read_only,
+            content_ro,
+        }
     }
 
     // ---- internal helpers ------------------------------------------------
@@ -90,13 +104,23 @@ impl GroveWinFs {
         fi.ea_size = 0;
     }
 
-    /// Refuse a mutation when mounted read-only.
-    fn check_writable(&self) -> Result<()> {
-        if self.read_only {
-            Err(nt(mapping::STATUS_MEDIA_WRITE_PROTECTED))
-        } else {
-            Ok(())
+    /// Refuse a mutation of `m`'s kind, given this volume's two read-only flags.
+    /// One place decides, so a callback cannot forget half of the contract.
+    fn gate(&self, m: mapping::Mutation) -> Result<()> {
+        match mapping::refuse_mutation(self.read_only, self.content_ro, m) {
+            Some(code) => Err(nt(code)),
+            None => Ok(()),
         }
+    }
+
+    /// Refuse a TREE mutation when the whole volume is mounted read-only.
+    fn check_writable(&self) -> Result<()> {
+        self.gate(mapping::Mutation::Tree)
+    }
+
+    /// Refuse a BYTES mutation: read-only volume OR a fork's content gate.
+    fn check_content_writable(&self) -> Result<()> {
+        self.gate(mapping::Mutation::Content)
     }
 
     fn open_ctx(node: &NodeInfo) -> GroveFileContext {
@@ -182,6 +206,9 @@ impl FileSystemContext for GroveWinFs {
         _extra_buffer_is_reparse_point: bool,
         file_info: &mut OpenFileInfo,
     ) -> Result<Self::FileContext> {
+        // A tree mutation on purpose: a FORK (content_ro) may create files —
+        // laying out its own shape is exactly what it is for — and is refused
+        // at the first BYTES by `write`/`set_file_size` below.
         self.check_writable()?;
 
         let parts = Self::parts(file_name);
@@ -241,7 +268,7 @@ impl FileSystemContext for GroveWinFs {
         _constrained_io: bool,
         file_info: &mut FileInfo,
     ) -> Result<u32> {
-        self.check_writable()?;
+        self.check_content_writable()?;
         let key = context.data_key()?;
         let written = self.backend.write(key, offset, buffer).map_err(FspError::from)? as u64;
         // Reflect the fresh size/mtime so the driver caches the updated view.
@@ -294,7 +321,7 @@ impl FileSystemContext for GroveWinFs {
         _set_allocation_size: bool,
         file_info: &mut FileInfo,
     ) -> Result<()> {
-        self.check_writable()?;
+        self.check_content_writable()?;
         let key = context.data_key()?;
         self.backend.truncate(key, new_size).map_err(FspError::from)?;
         if let Some(node) = self.meta.getattr(context.ino) {
