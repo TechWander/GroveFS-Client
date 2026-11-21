@@ -70,6 +70,12 @@ tr:nth-child(even) td{background:color-mix(in srgb,var(--tag-bg) 45%,transparent
 .scene b{color:var(--accent2)}
 .tw{margin:14px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .tw table{margin:0}
+/* a table whose columns cannot fit the text column takes its natural width and
+   the wrapper scrolls; left to auto layout it instead starves its CJK columns
+   down to the 52px floor, which renders 必填-style cells two characters a line.
+   The same escape hatch the <=600px block applies to every table, opted in per
+   table where a real browser measurement says the squeeze happens. */
+.tw.wide table{width:max-content;min-width:100%}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:960px){.grid2{grid-template-columns:1fr}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
@@ -225,7 +231,7 @@ cat BUILDINFO.txt | head -12      <span class="cmt"># 客户端提交 ↔ 内核
 
 <h3 id="s14">1.4 服务端前置条件</h3>
 <p>客户端只是第三个进程，它<b>不会</b>替你建树、也不会替你起服务。挂载前，服务端侧必须已经：</p>
-<div class="tw">
+<div class="tw wide">
 <table>
   <tr><th>需要</th><th>由谁提供</th><th>缺了会怎样（客户端会看到）</th></tr>
   <tr><td>视图已显式创建</td><td><code>grovefs view --meta-dir … create --view alice</code></td><td>按 explicit-view 文案拒绝：<code>view … does not exist</code>；<code>M_OPEN</code> 从不替客户端偷偷建一棵树</td></tr>
@@ -365,7 +371,7 @@ grovefs-win --manager HOST:PORT --roster-key-file F --view NAME --mount next</co
 
 <h3 id="s32">3.2 四种视图在客户端的表现</h3>
 <p>视图名先由 <code>M_OPEN</code> 解析成真实形态，确认包里带回三个尾部字段（解析后的名字、基视图名、种类）加上能力。客户端据此决定怎么挂，并把合同打进横幅。</p>
-<div class="tw">
+<div class="tw wide">
 <table>
   <tr><th>种类</th><th>谁来建</th><th>字节归属</th><th>挂载语义</th><th>mac 侧合同行（win 同形，前缀换 <code>grovefs-win:</code>）</th></tr>
   <tr>
