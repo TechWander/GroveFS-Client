@@ -15,6 +15,13 @@ grovefs-mac --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 \
             --view alice --token s3cr3t --mount /Volumes/alice
 ```
 
+or, with a `grovefs manager serve` running, without typing either address:
+
+```
+grovefs-mac --manager 10.0.0.5:50120 --roster-key-file roster.key \
+            --view alice --token s3cr3t --mount /Volumes/alice
+```
+
 ## How it reuses `grovefs`
 
 The main library exposes two client-facing feature sets:
@@ -70,7 +77,23 @@ cargo build -p grovefs-mac
 grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
             --token TOKEN [--api-key ID:SECRET] --mount DIR [--ro] \
             [--no-cache] [--cache-ttl SECS] [-o OPT]...
+
+grovefs-mac --manager HOST:PORT --roster-key-file PATH [--deployment NAME] \
+            --view NAME --token TOKEN --mount DIR    # same mount, coordinates signed
 ```
+
+* Coordinates come from **exactly one** of those two forms. `--manager` together
+  with `--meta-addr`/`--data-addr` is refused as a conflict, not resolved by
+  precedence; `--manager` without `--roster-key-file` is refused by name. The
+  key file is the manager's own `manager/roster.key`, which `manager serve`
+  mints on first start and names in its banner (`manager: roster key … — copy
+  to every client as mount --roster-key-file`); it is 64 hex characters
+  (`openssl rand -hex 32` makes one), the file is checked for that shape
+  before the manager is asked anything, and since it signs the answer with a
+  plain HMAC the manager's copy must stay secret. `GROVEFS_MANAGER` /
+  `GROVEFS_ROSTER_KEY_FILE` / `GROVEFS_DEPLOYMENT` carry the same mount with no
+  flags. The manager answers once, at mount time, and serves no traffic
+  afterwards: its later outage refuses new mounts, it cannot move a live one.
 
 * `--mount` is an **existing** directory (macFUSE mounts onto it; it does not
   create one). `volname=GroveFS-<view>` is passed on macOS so Finder shows a
@@ -95,6 +118,10 @@ grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
 ## v1 scope
 
 * Single `data-server` for the data plane (no client-side striping).
+  A roster from `manager serve` that declares several data members is therefore
+  **refused** rather than narrowed to one of its members: choosing a member here
+  would give this mount a layout other than the one the deployment declared, and
+  that is the kernel `grovefs mount`'s call to make, not a client's.
 * No Data-Access Capability to configure by hand: when the cluster's
   `meta-server` runs with `--data-access-key`, the capability it mints at
   `M_OPEN` is latched and replayed on every data-plane `OP_OPEN` automatically

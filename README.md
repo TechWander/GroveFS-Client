@@ -93,6 +93,17 @@ both clients implement them:
   forward it to every `data-server OP_OPEN` (`RemoteBackend::new_with_dac`), so
   a `--data-access-key` cluster mounts normally and refuses an out-of-date
   binary with the server's own refusal text instead of degrading silently.
+* **Coordinates have exactly one source.** Either the typed `--meta-addr` /
+  `--data-addr` pair, or `--manager` + `--roster-key-file` + `--deployment`,
+  which asks `manager serve` and mounts against the two addresses its HMAC
+  signature verified under a key you supplied — never both at once, refused as
+  a conflict rather than resolved by precedence. The manager is consulted once,
+  while the mount is being made: it proxies nothing and carries no traffic, so
+  its later outage can only refuse a NEW mount, never move a live one. A roster
+  declaring several data members is refused here, not narrowed to one member:
+  striping lives behind the kernel's `native` feature, so picking a member on
+  the client's behalf would silently hand this mount a different layout than
+  the deployment declared.
 
 Practically: rebuild these clients against the kernel you deploy, and refresh
 `dist/` in the same change that adopts a new handshake field. The kernel board
@@ -100,14 +111,28 @@ runs the shipped `dist/grovefs-mac` against its own servers precisely so this
 pairing is tested rather than assumed.
 
 That pairing is the board's `client` row — kernel-side `.build-bin/test_client.sh`,
-38 assertions (39 with its negative control), sections A–G: SQLite and PostgreSQL
+54 assertions (55 with its negative control), sections A–H: SQLite and PostgreSQL
 control planes with a kernel mount reading back this client's bytes; an unknown
 view refused; the static `--token` gate both ways; a `--data-access-key` pair
 where the capability has to travel `M_OPEN` → `OP_OPEN` (and an UNGATED pair on
 the same store still mounting the old byte-for-byte way); the FORK mount serving
 `mkdir`/`rename` while `write(2)` returns `EROFS` and the base view stays
-writable; the DERIVED lens wholly read-only; and `--require-api-key` admitting
-`--api-key`. Run it from the kernel checkout with `PRE_DAC_REV=<rev>` — a
+writable; the DERIVED lens wholly read-only; `--require-api-key` admitting
+`--api-key`; and section H on roster bootstrap — a mount typed with **no
+coordinate at all** resolving both addresses through `manager serve`, the
+bootstrap line naming the manager it asked and the coordinates it resolved, the
+written bytes landing on the data member the signed roster named, and every
+refusal shape: `--manager` together with an explicit coordinate (a conflict, not
+a precedence), `--manager` without `--roster-key-file` (naming the flag), a
+roster that does not verify under that key, a key file whose *shape* is wrong
+(refused before a manager is asked at all), an unreachable manager (refused with
+its address in the text), `GROVEFS_MANAGER`/`GROVEFS_ROSTER_KEY_FILE` carrying
+the same mount with no flags — and a roster declaring **several** data members,
+which this client refuses instead of choosing one of them, while the SAME roster
+mounts on the kernel `grovefs mount` that links the striped backend. That last
+pair is the asymmetry, asserted both ways on one roster; H self-skips, loudly,
+when the binary under test has no `--manager` flag at all.
+Run it from the kernel checkout with `PRE_DAC_REV=<rev>` — a
 `grovefs-client` revision whose `dist/` predates the capability handshake — and
 its one extra assertion proves the gate refuses that older binary rather than
 letting it mount. The script lives in `.build-bin/`, which the kernel's

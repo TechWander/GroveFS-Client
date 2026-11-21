@@ -52,7 +52,7 @@ cargo tree --target x86_64-pc-windows-gnu \
 |------|-------------|------|
 | `src/mapping.rs` | **every host** | WinFsp-free translation: path decomposition, `FILETIME` epoch math, Windows `FILE_ATTRIBUTE_*` bits, NTSTATUS codes, `NodeInfo → file-info` projection, `MetaError → NTSTATUS`, and the read-only / content-read-only write gate. Unit-tested here on Linux. |
 | `src/fs.rs` | `#[cfg(windows)]` | The thin `winfsp::filesystem::FileSystemContext` implementation: marshals `U16CStr` names and WinFsp's `FileInfo`/`FileSecurity`/`VolumeInfo` to and from `mapping`'s plain integers. |
-| `src/main.rs` | every host | CLI (`--meta-addr/--data-addr/--view/--token/--api-key/--mount/--ro`). On Windows it wires `RemoteMeta`+`RemoteBackend` into a `FileSystemHost` and mounts; on other hosts `run()` is a compiling stub that points you at `cargo test`. |
+| `src/main.rs` | every host | CLI (`--meta-addr/--data-addr` or `--manager/--roster-key-file/--deployment`, plus `--view/--token/--api-key/--mount/--ro`). On Windows it wires `RemoteMeta`+`RemoteBackend` into a `FileSystemHost` and mounts; on other hosts `run()` is a compiling stub that points you at `cargo test`. |
 
 Keeping every WinFsp-free decision in `mapping.rs` means the fiddly conversions
 are exercised by `cargo test` on any machine — the Windows-only file is
@@ -140,6 +140,23 @@ at link time — the DLL is resolved from the WinFsp install at first call.
   --view alice --token s3cr3t --mount M:
 ```
 
+With a `grovefs manager serve` running you can leave both addresses off and let
+a signed roster supply them — same mount, one source of coordinates instead of
+two that could disagree:
+
+```powershell
+.\..\target\x86_64-pc-windows-msvc\release\grovefs-win.exe `
+  --manager 10.0.0.5:50120 --roster-key-file C:\etc\grovefs\roster.key `
+  --view alice --token s3cr3t --mount next
+```
+
+`--manager` with an explicit `--meta-addr`/`--data-addr` is refused as a
+conflict rather than given precedence, and `--manager` without
+`--roster-key-file` is refused by name; `GROVEFS_MANAGER` /
+`GROVEFS_ROSTER_KEY_FILE` / `GROVEFS_DEPLOYMENT` supply the same three without
+any flags. The manager is asked once while the mount is being made and carries
+no traffic afterwards, so its later outage can only refuse a new mount.
+
 `--mount next` picks the first free drive letter; `--ro` forces read-only even
 if the view is writable. A view the server reports as *derived* (a virtual,
 read-only lens) is mounted read-only automatically. A view reported as a
@@ -160,7 +177,11 @@ at mount with the server's refusal text rather than silently losing writes.
 
 * Single `data-server` for the data plane (no client-side striping —
   `backend::sharded` is `native`-gated, so a `remote-only` build cannot link
-  it; `--data-addr` is one address).
+  it; `--data-addr` is one address). A roster declaring several data members is
+  therefore REFUSED, not narrowed to one member: picking a member here would
+  hand this mount a layout the deployment did not declare. The kernel
+  `grovefs mount` takes the whole list and is the way to mount such a
+  deployment; the board's `client` suite pins both halves of that pair.
 * No POSIX record locks surfaced through the mount (GroveFS has the primitive;
   mapping it to WinFsp byte-range locks is future work).
 * No NT ACLs: security is the server-side credential gate (`--token` /
