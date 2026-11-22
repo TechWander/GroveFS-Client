@@ -1,43 +1,37 @@
 grovefs-client prebuilt clients
-built: 2026-11-21
+built: 2026-11-22
 host: Linux 5.4.0-216-generic x86_64
 rustc: rustc 1.99.0 (b940084d7 2026-09-28)
 cargo: cargo 1.99.0 (5f94df478 2026-08-27)
-source: grovefs-client 731fbdb (clean working tree — the two binaries,
-        SHA256SUMS.txt and this file are the only paths this drop touches;
-        the commits on top of it ship nothing new — they are docs-only or
-        #[cfg(test)]-only, and rebuilding at the latest of them reproduced both
-        binaries byte-for-byte against the SHA256SUMS.txt above)
-        against sibling grovefs kernel at 963553c (branch exp/treedb-integration;
-        verified clean for src/, tests/, Cargo.toml and Cargo.lock at build time,
+source: grovefs-client 68ce107 (source/docs commit; the two binaries,
+        SHA256SUMS.txt and this file are the release artifacts in this drop)
+        against sibling grovefs kernel at f435975 (master; manager-only mount
+        and signed-roster resolution are the kernel tree used at build time,
         so these clients link exactly the tree that commit pins)
 profile: release, lto=true, stripped
 grovefs-mac: Linux build, fuser pure-Rust mount (macOS build needs macFUSE 4.x)
 grovefs-win: Linux build, cfg(not(windows)) stub, no WinFsp FFI
-what changed vs the previous drop (3bc087e @ kernel a8fcfae):
+what changed vs the previous drop (4534a6a @ kernel 963553c):
   * Mount bootstrap from a `grovefs manager`: --manager HOST:PORT resolves BOTH
     service coordinates from one signed roster, so an operator no longer hands
     out meta- and data addresses to every client machine. --roster-key-file is
     required (an unverified roster is an instruction to connect wherever someone
-    else signed for), --manager conflicts with --meta-addr/--data-addr, and
-    GROVEFS_MANAGER / GROVEFS_DEPLOYMENT / GROVEFS_ROSTER_KEY_FILE work as env
-    fallbacks, item for item with `grovefs mount`.
+    else signed for). --meta-addr/--data-addr are no longer accepted at all;
+    passing either is an unknown-argument error. GROVEFS_MANAGER /
+    GROVEFS_DEPLOYMENT / GROVEFS_ROSTER_KEY_FILE work as env fallbacks, item for
+    item with `grovefs mount`.
   * A roster declaring MORE THAN ONE data server is refused, not mounted against
     one member. Client-side striping lives in backend::sharded, which is
     `native`-gated, so a remote-only build cannot serve a striped deployment;
     picking a member would hand this mount a layout other than the one the
     deployment declared. The kernel `grovefs mount` of the SAME roster does
     mount — the kernel repo's client stage pins both halves of that asymmetry.
-  * --meta-addr/--data-addr became optional in argv (exactly one source of
-    coordinates: both given by hand, or neither under --manager). Every previous
-    command line still means the same thing.
-regression: .build-bin/test_client.sh in the kernel repo, sections A–H, mounts
-        grovefs-mac against meta-server/data-server built from the same kernel:
-        both control-plane tiers (SQLite + PostgreSQL), the unknown-view and
-        token-gate refusals, the Data-Access Capability handshake (with a
-        pre-DAC negative control), fork/derived view kinds, --require-api-key,
-        and since this drop the manager bootstrap (H: roster-resolved mount,
-        five refusal shapes — coordinate conflict, missing key, wrong key,
-        malformed key file, unreachable manager — the env fallback, and the
-        striped-roster asymmetry). 54 assertions on this pairing, 55 with the
-        negative control.
+  * --meta-addr/--data-addr were removed from the client CLI. Coordinates now
+    come only from the manager's signed roster; there is no direct-address
+    fallback and every previous hand-typed command line must be migrated.
+regression: `cargo test --workspace` from this source tree: grovefs-mac
+        7 tests and grovefs-win 18 tests (11 mapping + 7 roster/bootstrap);
+        the manager-only CLI contract rejects --meta-addr/--data-addr, resolves
+        both coordinates from a signed roster, and refuses missing keys,
+        incomplete rosters and striped data rosters. Release help and
+        `sha256sum -c SHA256SUMS.txt` were also checked for this drop.
