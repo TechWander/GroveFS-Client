@@ -93,11 +93,12 @@ both clients implement them:
   forward it to every `data-server OP_OPEN` (`RemoteBackend::new_with_dac`), so
   a `--data-access-key` cluster mounts normally and refuses an out-of-date
   binary with the server's own refusal text instead of degrading silently.
-* **Coordinates have exactly one source.** Either the typed `--meta-addr` /
-  `--data-addr` pair, or `--manager` + `--roster-key-file` + `--deployment`,
-  which asks `manager serve` and mounts against the two addresses its HMAC
-  signature verified under a key you supplied — never both at once, refused as
-  a conflict rather than resolved by precedence. The manager is consulted once,
+* **Coordinates have exactly one source: the manager's signed roster.** The
+  clients require `--manager` + `--roster-key-file` (or the corresponding
+  `GROVEFS_MANAGER` / `GROVEFS_ROSTER_KEY_FILE` environment variables) and ask
+  `manager serve` for the deployment topology. The retired `--meta-addr` /
+  `--data-addr` flags are no longer accepted at all; passing either is an
+  unknown-argument error, not a fallback path. The manager is consulted once,
   while the mount is being made: it proxies nothing and carries no traffic, so
   its later outage can only refuse a NEW mount, never move a live one. A roster
   declaring several data members is refused here, not narrowed to one member:
@@ -122,8 +123,8 @@ writable; the DERIVED lens wholly read-only; `--require-api-key` admitting
 coordinate at all** resolving both addresses through `manager serve`, the
 bootstrap line naming the manager it asked and the coordinates it resolved, the
 written bytes landing on the data member the signed roster named, and every
-refusal shape: `--manager` together with an explicit coordinate (a conflict, not
-a precedence), `--manager` without `--roster-key-file` (naming the flag), a
+refusal shape: the retired `--meta-addr`/`--data-addr` arguments (unknown-argument errors),
+`--manager` without `--roster-key-file` (naming the flag), a
 roster that does not verify under that key, a key file whose *shape* is wrong
 (refused before a manager is asked at all), an unreachable manager (refused with
 its address in the text), `GROVEFS_MANAGER`/`GROVEFS_ROSTER_KEY_FILE` carrying

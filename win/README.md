@@ -11,7 +11,7 @@ the result through WinFsp's signed kernel driver so it appears as an ordinary
 drive in Explorer and any Win32 application.
 
 ```
-grovefs-win --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 \
+grovefs-win --manager 10.0.0.5:50055 --roster-key-file roster.key \
             --view alice --token s3cr3t --mount M:
 ```
 
@@ -52,7 +52,7 @@ cargo tree --target x86_64-pc-windows-gnu \
 |------|-------------|------|
 | `src/mapping.rs` | **every host** | WinFsp-free translation: path decomposition, `FILETIME` epoch math, Windows `FILE_ATTRIBUTE_*` bits, NTSTATUS codes, `NodeInfo → file-info` projection, `MetaError → NTSTATUS`, and the read-only / content-read-only write gate. Unit-tested here on Linux. |
 | `src/fs.rs` | `#[cfg(windows)]` | The thin `winfsp::filesystem::FileSystemContext` implementation: marshals `U16CStr` names and WinFsp's `FileInfo`/`FileSecurity`/`VolumeInfo` to and from `mapping`'s plain integers. |
-| `src/main.rs` | every host | CLI (`--meta-addr/--data-addr` or `--manager/--roster-key-file/--deployment`, plus `--view/--token/--api-key/--mount/--ro`). On Windows it wires `RemoteMeta`+`RemoteBackend` into a `FileSystemHost` and mounts; on other hosts `run()` is a compiling stub that points you at `cargo test`. |
+| `src/main.rs` | every host | CLI (`--manager/--roster-key-file/--deployment`, plus `--view/--token/--api-key/--mount/--ro`) — the manager bootstrap is the only way coordinates are supplied; hand-typed `--meta-addr`/`--data-addr` are no longer accepted. On Windows it wires `RemoteMeta`+`RemoteBackend` into a `FileSystemHost` and mounts; on other hosts `run()` is a compiling stub that points you at `cargo test`. |
 
 Keeping every WinFsp-free decision in `mapping.rs` means the fiddly conversions
 are exercised by `cargo test` on any machine — the Windows-only file is
@@ -134,24 +134,20 @@ at link time — the DLL is resolved from the WinFsp install at first call.
 
 ## Run
 
-```powershell
-.\..\target\x86_64-pc-windows-msvc\release\grovefs-win.exe `
-  --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 `
-  --view alice --token s3cr3t --mount M:
-```
-
-With a `grovefs manager serve` running you can leave both addresses off and let
-a signed roster supply them — same mount, one source of coordinates instead of
-two that could disagree:
+Point at a `grovefs manager serve` and let a signed roster supply both
+coordinates — the only way this client learns where to connect. ADR-0002
+removed every other mount form: there is no local mount, and hand-typed
+`--meta-addr`/`--data-addr` are no longer accepted (passing them is an
+unknown-argument error):
 
 ```powershell
 .\..\target\x86_64-pc-windows-msvc\release\grovefs-win.exe `
-  --manager 10.0.0.5:50120 --roster-key-file C:\etc\grovefs\roster.key `
+  --manager 10.0.0.5:50055 --roster-key-file C:\etc\grovefs\roster.key `
   --view alice --token s3cr3t --mount next
 ```
 
-`--manager` with an explicit `--meta-addr`/`--data-addr` is refused as a
-conflict rather than given precedence, and `--manager` without
+`--meta-addr`/`--data-addr` are no longer flags on this client, so there is no
+second form to conflict with; `--manager` without
 `--roster-key-file` is refused by name; `GROVEFS_MANAGER` /
 `GROVEFS_ROSTER_KEY_FILE` / `GROVEFS_DEPLOYMENT` supply the same three without
 any flags. The manager is asked once while the mount is being made and carries
@@ -177,7 +173,7 @@ at mount with the server's refusal text rather than silently losing writes.
 
 * Single `data-server` for the data plane (no client-side striping —
   `backend::sharded` is `native`-gated, so a `remote-only` build cannot link
-  it; `--data-addr` is one address). A roster declaring several data members is
+  it; the resolved roster must carry exactly one data address). A roster declaring several data members is
   therefore REFUSED, not narrowed to one member: picking a member here would
   hand this mount a layout the deployment did not declare. The kernel
   `grovefs mount` takes the whole list and is the way to mount such a

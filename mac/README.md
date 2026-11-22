@@ -10,15 +10,14 @@ Unlike the Windows client, it does not re-implement the VFS surface: it reuses
 the real `GroveFS` FUSE implementation (`grovefs::fs_impl`) that `grovefs mount`
 uses on Linux. Only the kernel bridge host differs.
 
-```
-grovefs-mac --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 \
-            --view alice --token s3cr3t --mount /Volumes/alice
-```
+Point at a `grovefs manager serve` and let a signed roster supply both cluster
+coordinates — this is the only way this client learns where to connect. ADR-0002
+removed every other mount form: there is no local mount, and hand-typed
+`--meta-addr`/`--data-addr` are no longer accepted (passing them is an
+unknown-argument error), so the manager bootstrap is required:
 
-or, with a `grovefs manager serve` running, without typing either address:
-
 ```
-grovefs-mac --manager 10.0.0.5:50120 --roster-key-file roster.key \
+grovefs-mac --manager 10.0.0.5:50055 --roster-key-file roster.key \
             --view alice --token s3cr3t --mount /Volumes/alice
 ```
 
@@ -74,18 +73,15 @@ cargo build -p grovefs-mac
 ## Usage
 
 ```
-grovefs-mac --meta-addr HOST:PORT --data-addr HOST:PORT --view NAME \
-            --token TOKEN [--api-key ID:SECRET] --mount DIR [--ro] \
-            [--no-cache] [--cache-ttl SECS] [-o OPT]...
-
 grovefs-mac --manager HOST:PORT --roster-key-file PATH [--deployment NAME] \
-            --view NAME --token TOKEN --mount DIR    # same mount, coordinates signed
+            --view NAME --token TOKEN [--api-key ID:SECRET] --mount DIR [--ro] \
+            [--no-cache] [--cache-ttl SECS] [-o OPT]...
 ```
 
-* Coordinates come from **exactly one** of those two forms. `--manager` together
-  with `--meta-addr`/`--data-addr` is refused as a conflict, not resolved by
-  precedence; `--manager` without `--roster-key-file` is refused by name. The
-  key file is the manager's own `manager/roster.key`, which `manager serve`
+* The manager bootstrap is the **only** way coordinates are supplied — there is
+  no second form to conflict with; `--meta-addr`/`--data-addr` are no longer
+  flags on this client. `--manager` without `--roster-key-file` is refused by
+  name. The key file is the manager's own `manager/roster.key`, which `manager serve`
   mints on first start and names in its banner (`manager: roster key … — copy
   to every client as mount --roster-key-file`); it is 64 hex characters
   (`openssl rand -hex 32` makes one), the file is checked for that shape

@@ -12,14 +12,12 @@
 //! logic that needs no WinFsp type lives in [`mapping`] (host-tested); the
 //! WinFsp callback surface lives in [`fs`] (`#[cfg(windows)]` only).
 //!
-//!   grovefs-win --meta-addr 10.0.0.1:50111 --data-addr 10.0.0.1:50110 \
-//!               --view alice --token s3cr3t --mount M:
-//!
-//! Or let the deployment's `grovefs manager` resolve both coordinates from one
-//! signed roster:
-//!
-//!   grovefs-win --manager 10.0.0.5:50120 --roster-key-file C:\\grovefs\\roster.hex \\
+//!   grovefs-win --manager 10.0.0.5:50055 --roster-key-file C:\\grovefs\\roster.key \\
 //!               --view alice --token s3cr3t --mount next
+//!
+//! The two service coordinates come ONLY from the deployment's `grovefs
+//! manager`, resolved once from a signed roster; this client never dials a
+//! hand-typed meta-/data-server address.
 
 use std::path::PathBuf;
 
@@ -35,25 +33,19 @@ mod fs;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "grovefs-win", about = "Mount a GroveFS view as a Windows drive (WinFsp)")]
+#[command(
+    name = "grovefs-win",
+    about = "Mount a GroveFS view as a Windows drive (WinFsp)"
+)]
 struct Cli {
-    /// Central metadata service address: `host:port` (the `meta-server`). May
-    /// also be a failover list (`primary,standby`), which `RemoteMeta` walks in
-    /// order. Give this together with `--data-addr`, or use `--manager` to have
-    /// both resolved for you.
-    #[arg(long, value_name = "HOST:PORT", conflicts_with = "manager")]
-    meta_addr: Option<String>,
-    /// Data service address: `host:port` (the `data-server`). One address: this
-    /// build cannot link the sharded backend, so it does not stripe.
-    #[arg(long, value_name = "HOST:PORT", conflicts_with = "manager")]
-    data_addr: Option<String>,
-    /// Mount bootstrap: ask this `grovefs manager` for the deployment's SIGNED
-    /// roster and take the two service coordinates from it, instead of writing
-    /// both by hand. Requires `--roster-key-file`: an unverified roster is an
-    /// instruction to connect wherever someone else wants. The manager is
-    /// consulted once, during the mount — a bootstrap, never a proxy, so its
-    /// restart or outage cannot disturb a live mount. Falls back to env
-    /// `GROVEFS_MANAGER`.
+    /// Mount bootstrap: the ONLY way this client learns where to connect. Ask
+    /// this `grovefs manager` for the deployment's SIGNED roster and take the
+    /// two service coordinates from it; the client never dials a hand-typed
+    /// meta-/data-server address. Requires `--roster-key-file`: an unverified
+    /// roster is an instruction to connect wherever someone else wants. The
+    /// manager is consulted once, during the mount — a bootstrap, never a
+    /// proxy, so its restart or outage cannot disturb a live mount. Falls back
+    /// to env `GROVEFS_MANAGER`.
     #[arg(long, value_name = "HOST:PORT")]
     manager: Option<String>,
     /// Which deployment `--manager` should resolve (default `default`). Falls
@@ -128,7 +120,7 @@ fn roster_coords(r: &grovefs::manager::Roster) -> Result<(String, String), Strin
         many => Err(format!(
             "roster for deployment '{}' declares {} data servers: this client does not stripe, \
              so it cannot mount this deployment — use the kernel `grovefs mount`, which takes \
-             the whole list (pointing --data-addr at one member is a DIFFERENT layout, not a \
+             the whole list (dialling one member is a DIFFERENT layout, not a \
              smaller one)",
             r.deployment,
             many.len()
@@ -136,8 +128,8 @@ fn roster_coords(r: &grovefs::manager::Roster) -> Result<(String, String), Strin
     }
 }
 
-/// Resolve the two service coordinates — exactly as given, or from the
-/// deployment's signed roster. Never from both sources at once.
+/// Resolve both service coordinates from the deployment's signed roster.
+/// Directly typed service addresses are not a supported client input.
 ///
 /// `allow(dead_code)`: its caller lives in the `#[cfg(windows)]` mount path, so
 /// a Linux test build compiles it (for the `roster_coords` coverage below)
@@ -156,7 +148,11 @@ fn resolve_addrs(cli: &Cli) -> std::result::Result<(String, String), Box<dyn std
             let key_file = cli
                 .roster_key_file
                 .clone()
-                .or_else(|| std::env::var("GROVEFS_ROSTER_KEY_FILE").ok().map(PathBuf::from))
+                .or_else(|| {
+                    std::env::var("GROVEFS_ROSTER_KEY_FILE")
+                        .ok()
+                        .map(PathBuf::from)
+                })
                 .ok_or(
                     "--manager needs --roster-key-file (or GROVEFS_ROSTER_KEY_FILE): an \
                      unverified roster would let someone else choose the addresses we connect to",
@@ -185,12 +181,12 @@ fn resolve_addrs(cli: &Cli) -> std::result::Result<(String, String), Box<dyn std
             );
             Ok(coords)
         }
-        None => match (&cli.meta_addr, &cli.data_addr) {
-            (Some(m), Some(d)) => Ok((m.clone(), d.clone())),
-            _ => Err(
-                "give both --meta-addr and --data-addr, or --manager HOST:PORT with --roster-key-file".into(),
-            ),
-        },
+        None => Err(
+            "a mount resolves its coordinates from the deployment's manager: give --manager \
+             HOST:PORT (or GROVEFS_MANAGER) with --roster-key-file PATH; this client no longer \
+             dials a hand-typed meta-/data-server address"
+                .into(),
+        ),
     }
 }
 
@@ -211,8 +207,8 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Initialize the WinFsp runtime; the returned token must outlive the host.
     let _init = winfsp_init()?;
 
-    // 1. Authoritative view tree over the LAN. The two coordinates come either
-    //    from the CLI or from one signed roster lookup — never from both.
+    // 1. Authoritative view tree over the LAN. Both coordinates come from one
+    //    signed roster lookup; the client has no direct-address fallback.
     let (meta_addr, data_addr) = resolve_addrs(cli)?;
     let rm = RemoteMeta::new_with_creds(
         &meta_addr,
@@ -263,7 +259,7 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // 2. Object bytes over the LAN (single data-server; no striping in v1 — the
     //    sharded backend is `native`-gated, so a `remote-only` client cannot
     //    link it; a roster declaring several members is refused by
-    //    `roster_coords`, and a comma-separated `--data-addr` is one address).
+    //    `roster_coords`, so exactly one data address reaches this backend).
     let backend: Arc<dyn StorageBackend> = Arc::new(RemoteBackend::new_with_dac(
         &data_addr,
         &cli.token,
@@ -333,10 +329,8 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // caller sees the CLI is wired correctly, then exit.
     Err(format!(
         "grovefs-win mounts via WinFsp and only runs on Windows \
-         (parsed: --meta-addr {} --data-addr {} --manager {}; \
+         (parsed: --manager {}; \
          to test on this host run `cargo test`)",
-        cli.meta_addr.as_deref().unwrap_or("-"),
-        cli.data_addr.as_deref().unwrap_or("-"),
         cli.manager.as_deref().unwrap_or("-"),
     )
     .into())
@@ -353,20 +347,22 @@ mod tests {
     /// duplicated here rather than trusted to look alike: this crate is the one
     /// neither the kernel board nor a Linux host ever mounts, so the only thing
     /// that can catch `--manager` drifting on this side is a test that runs
-    /// everywhere. `--manager` has to parse alone (it owns both coordinates) and
-    /// be refused as a CONFLICT beside either hand-typed one, never resolved by
-    /// precedence.
+    /// everywhere. `--manager` parses alone (it owns both coordinates) and the
+    /// retired hand-typed address flags are rejected outright, never merely
+    /// conflicting.
     #[test]
     fn manager_alone_is_a_complete_coordinate_source() {
         let cli = Cli::try_parse_from([
-            "grovefs-win", "--manager", "10.0.0.5:50120", "--view", "alice", "--mount", "M:",
+            "grovefs-win",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "M:",
         ])
         .unwrap();
-        assert_eq!(cli.manager.as_deref(), Some("10.0.0.5:50120"));
-        assert!(
-            cli.meta_addr.is_none() && cli.data_addr.is_none(),
-            "the manager owns both coordinates"
-        );
+        assert_eq!(cli.manager.as_deref(), Some("10.0.0.5:50055"));
         // Not clap-required on purpose: GROVEFS_ROSTER_KEY_FILE is a legal way to
         // supply the key, and the message explaining why it is needed is written
         // at resolution time.
@@ -374,14 +370,21 @@ mod tests {
     }
 
     #[test]
-    fn manager_and_a_typed_coordinate_are_a_conflict_not_a_precedence() {
+    fn typed_addresses_are_no_longer_accepted_at_all() {
         for other in ["--meta-addr", "--data-addr"] {
             let err = Cli::try_parse_from([
-                "grovefs-win", "--manager", "10.0.0.5:50120", other, "10.0.0.9:50111", "--view",
-                "alice", "--mount", "M:",
+                "grovefs-win",
+                "--manager",
+                "10.0.0.5:50055",
+                other,
+                "10.0.0.9:50111",
+                "--view",
+                "alice",
+                "--mount",
+                "M:",
             ])
             .unwrap_err();
-            assert_eq!(err.kind(), ErrorKind::ArgumentConflict, "{other}: {err}");
+            assert_eq!(err.kind(), ErrorKind::UnknownArgument, "{other}: {err}");
         }
     }
 
@@ -394,12 +397,21 @@ mod tests {
     #[test]
     fn a_manager_without_a_key_is_refused_before_it_is_asked() {
         let cli = Cli::try_parse_from([
-            "grovefs-win", "--manager", "127.0.0.1:1", "--view", "alice", "--mount", "M:",
+            "grovefs-win",
+            "--manager",
+            "127.0.0.1:1",
+            "--view",
+            "alice",
+            "--mount",
+            "M:",
         ])
         .unwrap();
         let err = resolve_addrs(&cli).unwrap_err().to_string();
         assert!(err.contains("--roster-key-file"), "{err}");
-        assert!(!err.contains("asking manager"), "the manager was contacted: {err}");
+        assert!(
+            !err.contains("asking manager"),
+            "the manager was contacted: {err}"
+        );
     }
 
     fn roster(meta: &[&str], data: &[&str]) -> Roster {
@@ -424,8 +436,11 @@ mod tests {
     /// whole ordered list has to reach `RemoteMeta`.
     #[test]
     fn the_whole_meta_failover_list_survives() {
-        let (m, d) =
-            roster_coords(&roster(&["10.0.0.1:50111", "10.0.0.2:50111"], &["10.0.0.1:50110"])).unwrap();
+        let (m, d) = roster_coords(&roster(
+            &["10.0.0.1:50111", "10.0.0.2:50111"],
+            &["10.0.0.1:50110"],
+        ))
+        .unwrap();
         assert_eq!(m, "10.0.0.1:50111,10.0.0.2:50111");
         assert_eq!(d, "10.0.0.1:50110");
     }
