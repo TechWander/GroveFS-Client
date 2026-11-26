@@ -66,8 +66,12 @@ struct Cli {
     #[arg(long, value_name = "TOKEN", default_value = "")]
     token: String,
     /// Optional per-caller API key `<id>:<secret>` for a server started with
-    /// `--require-api-key`. Empty means gate by the static token only.
-    #[arg(long, value_name = "ID:SECRET", default_value = "")]
+    /// `--require-api-key`. Empty means gate by the static token only. Falls
+    /// back to env `GROVEFS_API_KEY` so a secret need not sit in a command
+    /// line (argv is visible in the process listing and shell history) — the
+    /// same entry `grovefs mount` offers, so one deployment env file can serve
+    /// every client kind.
+    #[arg(long = "api-key", value_name = "ID:SECRET", default_value = "")]
     api_key: String,
     /// Where to mount: a drive letter (`M:`), a directory path, or `next` for
     /// the first free drive letter.
@@ -190,6 +194,21 @@ fn resolve_addrs(cli: &Cli) -> std::result::Result<(String, String), Box<dyn std
     }
 }
 
+/// The API key, argv first and env second — the kernel mount's entry shape,
+/// so the same `GROVEFS_API_KEY` a deployment exports for `grovefs mount`
+/// works here too and the secret stays out of the process listing.
+///
+/// `cfg(any(windows, test))` for the same reason as `resolve_addrs`: its
+/// caller lives in the `#[cfg(windows)]` mount path, while the test on any
+/// host pins the resolution directly.
+#[cfg(any(windows, test))]
+fn api_key(cli: &Cli) -> String {
+    if !cli.api_key.is_empty() {
+        return cli.api_key.clone();
+    }
+    std::env::var("GROVEFS_API_KEY").unwrap_or_default()
+}
+
 // ---- Windows: the real WinFsp mount path ---------------------------------
 
 #[cfg(windows)]
@@ -210,13 +229,11 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // 1. Authoritative view tree over the LAN. Both coordinates come from one
     //    signed roster lookup; the client has no direct-address fallback.
     let (meta_addr, data_addr) = resolve_addrs(cli)?;
+    let key = api_key(cli);
     let rm = RemoteMeta::new_with_creds(
-        &meta_addr,
-        &cli.view,
-        &cli.token,
+        &meta_addr, &cli.view, &cli.token,
         // self-reported audit uid; the Windows client has no POSIX uid.
-        0,
-        &cli.api_key,
+        0, &key,
     )?;
     // The `M_OPEN` ack is the mount's contract, and the same three capability
     // bytes the Linux `grovefs mount` reads drive this mount:
@@ -261,10 +278,7 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     //    link it; a roster declaring several members is refused by
     //    `roster_coords`, so exactly one data address reaches this backend).
     let backend: Arc<dyn StorageBackend> = Arc::new(RemoteBackend::new_with_dac(
-        &data_addr,
-        &cli.token,
-        &cli.api_key,
-        &dac,
+        &data_addr, &cli.token, &key, &dac,
     )?);
 
     // 3. Two independent gates, exactly as the Linux mount splits them:
@@ -338,10 +352,57 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_addrs, roster_coords, Cli};
+    use super::{api_key, resolve_addrs, roster_coords, Cli};
     use clap::error::ErrorKind;
     use clap::Parser;
     use grovefs::manager::Roster;
+
+    /// Env-mutating tests share this lock: `GROVEFS_API_KEY` is process-wide
+    /// and cargo runs these in parallel threads, so an unlocked set_var could
+    /// be seen by the sibling assertion and make the pair flaky.
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The same credential-entry contract the mac shell pins: `--api-key`
+    /// wins when given, `GROVEFS_API_KEY` is the fallback (out of argv, into
+    /// no `ps`), and neither is ever an override of the other. Duplicated per
+    /// shell on purpose — this is the one CLI surface no board ever mounts on
+    /// the Windows side.
+    #[test]
+    fn api_key_argv_beats_the_env_fallback() {
+        let _g = env_guard();
+        let typed = Cli::try_parse_from([
+            "grovefs-win",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "M:",
+            "--api-key",
+            "1:fromargv",
+        ])
+        .unwrap();
+        let empty = Cli::try_parse_from([
+            "grovefs-win",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "M:",
+        ])
+        .unwrap();
+        // SAFETY: single test thread holds `env_guard`, and nothing else in
+        // this binary touches the environment while the guard is held.
+        unsafe { std::env::set_var("GROVEFS_API_KEY", "7:fromenv") };
+        assert_eq!(api_key(&typed), "1:fromargv");
+        assert_eq!(api_key(&empty), "7:fromenv");
+        unsafe { std::env::remove_var("GROVEFS_API_KEY") };
+        assert_eq!(api_key(&empty), "");
+    }
 
     /// The same CLI contract the mac shell is held to, and the reason it is
     /// duplicated here rather than trusted to look alike: this crate is the one

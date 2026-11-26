@@ -27,7 +27,7 @@ use grovefs::backend::StorageBackend;
 use grovefs::meta::{MetaProvider, NodeInfo};
 
 use winfsp::filesystem::{
-    DirBuffer, DirInfo, DirMarker, FileSecurity, FileInfo, FileSystemContext, OpenFileInfo,
+    DirBuffer, DirInfo, DirMarker, FileInfo, FileSecurity, FileSystemContext, OpenFileInfo,
     VolumeInfo, WideNameInfo,
 };
 use winfsp::{FspError, Result, U16CStr};
@@ -152,7 +152,9 @@ impl GroveFileContext {
     /// The object key as a `&str`, or a `STATUS_INVALID_DEVICE_REQUEST` error
     /// for handles that have no data object (directories / symlinks).
     fn data_key(&self) -> Result<&str> {
-        self.key.as_deref().ok_or_else(|| nt(mapping::STATUS_INVALID_DEVICE_REQUEST))
+        self.key
+            .as_deref()
+            .ok_or_else(|| nt(mapping::STATUS_INVALID_DEVICE_REQUEST))
     }
 }
 
@@ -236,7 +238,10 @@ impl FileSystemContext for GroveWinFs {
         } else {
             // A fresh object: mint a uuid key, register the empty object with
             // the backend, and bind it to a new regular-file node.
-            let key: Arc<str> = self.backend.new_key(&uuid::Uuid::new_v4().simple().to_string()).into();
+            let key: Arc<str> = self
+                .backend
+                .new_key(&uuid::Uuid::new_v4().simple().to_string())
+                .into();
             self.backend.create(&key).map_err(FspError::from)?;
             let ino = self
                 .meta
@@ -253,7 +258,10 @@ impl FileSystemContext for GroveWinFs {
 
     fn read(&self, context: &Self::FileContext, buffer: &mut [u8], offset: u64) -> Result<u32> {
         let key = context.data_key()?;
-        let data = self.backend.read(key, offset, buffer.len()).map_err(FspError::from)?;
+        let data = self
+            .backend
+            .read(key, offset, buffer.len())
+            .map_err(FspError::from)?;
         let n = data.len().min(buffer.len());
         buffer[..n].copy_from_slice(&data[..n]);
         Ok(n as u32)
@@ -270,7 +278,10 @@ impl FileSystemContext for GroveWinFs {
     ) -> Result<u32> {
         self.check_content_writable()?;
         let key = context.data_key()?;
-        let written = self.backend.write(key, offset, buffer).map_err(FspError::from)? as u64;
+        let written = self
+            .backend
+            .write(key, offset, buffer)
+            .map_err(FspError::from)? as u64;
         // Reflect the fresh size/mtime so the driver caches the updated view.
         if let Some(node) = self.meta.getattr(context.ino) {
             Self::fill(&node, file_info);
@@ -323,7 +334,9 @@ impl FileSystemContext for GroveWinFs {
     ) -> Result<()> {
         self.check_content_writable()?;
         let key = context.data_key()?;
-        self.backend.truncate(key, new_size).map_err(FspError::from)?;
+        self.backend
+            .truncate(key, new_size)
+            .map_err(FspError::from)?;
         if let Some(node) = self.meta.getattr(context.ino) {
             Self::fill(&node, file_info);
         } else {

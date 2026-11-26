@@ -242,7 +242,11 @@ mod tests {
             parent_id: ROOT_INO,
             name: format!("n{id}"),
             kind,
-            data_ref: if kind == NodeKind::Regular { Some(format!("key{id}")) } else { None },
+            data_ref: if kind == NodeKind::Regular {
+                Some(format!("key{id}"))
+            } else {
+                None
+            },
             link_target: None,
             mode,
             uid: 0,
@@ -323,10 +327,22 @@ mod tests {
 
     #[test]
     fn meta_errors_map_to_distinct_statuses() {
-        assert_eq!(meta_err_to_status(MetaError::Exists), STATUS_OBJECT_NAME_COLLISION);
-        assert_eq!(meta_err_to_status(MetaError::NotFound), STATUS_OBJECT_NAME_NOT_FOUND);
-        assert_eq!(meta_err_to_status(MetaError::NotEmpty), STATUS_DIRECTORY_NOT_EMPTY);
-        assert_eq!(meta_err_to_status(MetaError::Db("x".into())), STATUS_INTERNAL_ERROR);
+        assert_eq!(
+            meta_err_to_status(MetaError::Exists),
+            STATUS_OBJECT_NAME_COLLISION
+        );
+        assert_eq!(
+            meta_err_to_status(MetaError::NotFound),
+            STATUS_OBJECT_NAME_NOT_FOUND
+        );
+        assert_eq!(
+            meta_err_to_status(MetaError::NotEmpty),
+            STATUS_DIRECTORY_NOT_EMPTY
+        );
+        assert_eq!(
+            meta_err_to_status(MetaError::Db("x".into())),
+            STATUS_INTERNAL_ERROR
+        );
         // the status values are negative i32 (high bit set), as NTSTATUS requires
         const { assert!(STATUS_OBJECT_NAME_NOT_FOUND < 0) };
     }

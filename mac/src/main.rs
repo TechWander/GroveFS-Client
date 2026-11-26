@@ -13,7 +13,8 @@
 //! protocol. Together they are exactly "the client half of `grovefs mount`".
 //!
 //!   grovefs-mac --manager 10.0.0.5:50055 --roster-key-file /etc/grovefs/roster.key \
-//!               --view alice --token s3cr3t --mount /Volumes/alice
+//!               --view alice --token s3cr3t --mount /Volumes/alice \
+//!               [--ro] [--layout my.rules]
 //!
 //! The two service coordinates come ONLY from the deployment's `grovefs
 //! manager`, resolved once from a signed roster; this client never dials a
@@ -65,8 +66,12 @@ struct Cli {
     #[arg(long, value_name = "TOKEN", default_value = "")]
     token: String,
     /// Optional per-caller API key `<id>:<secret>` for a server started with
-    /// `--require-api-key`. Empty means gate by the static token only.
-    #[arg(long, value_name = "ID:SECRET", default_value = "")]
+    /// `--require-api-key`. Empty means gate by the static token only. Falls
+    /// back to env `GROVEFS_API_KEY` so a secret need not sit in a command
+    /// line (argv lands in `ps` and shell history) — the same entry
+    /// `grovefs mount` offers, and the one deployments like the cluster's
+    /// `~/.grove/mount.env` are wired for.
+    #[arg(long = "api-key", value_name = "ID:SECRET", default_value = "")]
     api_key: String,
     /// Existing directory to mount on, e.g. `/Volumes/alice`.
     #[arg(long, value_name = "DIR")]
@@ -87,6 +92,15 @@ struct Cli {
     /// default_permissions, auto_unmount, volname=GroveFS.
     #[arg(short = 'o', long, num_args = 0..)]
     options: Vec<String>,
+    /// Presentation overlay: a rules file that reshapes how THIS mount
+    /// displays the view without touching the stored tree (`grovefs layout
+    /// show` prints one). Client-side and per-mount, exactly like the kernel
+    /// mount's `--layout`: two clients of one view can show different cuts of
+    /// the same authoritative data. Writes through the lens land on the real
+    /// entries; creating directly inside a synthesized (lens-only) dir is
+    /// refused with EPERM.
+    #[arg(long)]
+    layout: Option<PathBuf>,
 }
 
 fn main() {
@@ -132,6 +146,16 @@ fn roster_coords(r: &grovefs::manager::Roster) -> Result<(String, String), Strin
             many.len()
         )),
     }
+}
+
+/// The API key, argv first and env second — the kernel mount's entry shape,
+/// so a deployment can keep the secret out of `ps` on every client kind
+/// (`run()` uses it on every UNIX host that mounts, Linux test host included).
+fn api_key(cli: &Cli) -> String {
+    if !cli.api_key.is_empty() {
+        return cli.api_key.clone();
+    }
+    std::env::var("GROVEFS_API_KEY").unwrap_or_default()
 }
 
 /// Resolve both service coordinates from the deployment's signed roster.
@@ -208,13 +232,14 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // 1. Authoritative view tree over the LAN. Both coordinates come from one
     //    signed roster lookup; the client has no direct-address fallback.
     let (meta_addr, data_addr) = resolve_addrs(cli)?;
+    let key = api_key(cli);
     let rm = RemoteMeta::new_with_creds(
         &meta_addr,
         &cli.view,
         &cli.token,
         // self-reported audit uid; access control is the token / API key.
         grovefs::platform::getuid(),
-        &cli.api_key,
+        &key,
     )?;
     // The `M_OPEN` ack is the mount's contract, and this client reads the SAME
     // capability bytes the Linux `grovefs mount` does: [0] marks a read-only
@@ -254,8 +279,30 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
     //    `backend::sharded` is `native`-gated, so a client build cannot link it;
     //    a roster declaring several members is refused by `roster_coords`).
     let backend: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(
-        RemoteBackend::new_with_dac(&data_addr, &cli.token, &cli.api_key, &dac)?,
+        RemoteBackend::new_with_dac(&data_addr, &cli.token, &key, &dac)?,
     );
+
+    // 2b. Optional presentation lens: the SAME client-side overlay the kernel
+    //     mount builds from `--layout` (layout is unconditional in the library,
+    //     so a remote-only build links it). It reshapes only this mount's
+    //     display tree; the stored tree and every other client are untouched,
+    //     and entries keep their real inodes, so data IO passes straight
+    //     through — which is why wrapping the META half is the whole wiring.
+    let meta: std::sync::Arc<dyn MetaProvider> = match &cli.layout {
+        Some(f) => {
+            let rules = grovefs::layout::LayoutRules::parse_file(f)
+                .map_err(|e| format!("bad layout file {}: {e}", f.display()))?;
+            eprintln!(
+                "grovefs-mac: layout overlay {}: {} hide, {} only, {} reloc rule(s)",
+                f.display(),
+                rules.hide.len(),
+                rules.only.len(),
+                rules.reloc.len(),
+            );
+            std::sync::Arc::new(grovefs::layout::LayoutMeta::new(meta, rules))
+        }
+        None => meta,
+    };
 
     // 3. Read-only is the CLI flag, an `-o ro`, or a server-side derived lens.
     let o_ro = cli.options.iter().any(|s| s == "ro");
@@ -336,10 +383,93 @@ fn run(cli: &Cli) -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_addrs, roster_coords, Cli};
+    use super::{api_key, resolve_addrs, roster_coords, Cli};
     use clap::error::ErrorKind;
     use clap::Parser;
     use grovefs::manager::Roster;
+    use std::path::PathBuf;
+
+    /// Env-mutating tests share this lock: `GROVEFS_API_KEY` is process-wide
+    /// and cargo runs these in parallel threads, so an unlocked set_var could
+    /// be seen by the sibling assertion and make the pair flaky.
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn base_cli(api_key: &str) -> Cli {
+        Cli::try_parse_from([
+            "grovefs-mac",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "/tmp/m",
+            "--api-key",
+            api_key,
+        ])
+        .unwrap()
+    }
+
+    /// `--api-key` wins when given; the env is only the fallback, never an
+    /// override (a typed flag that silently did nothing would be worse than
+    /// the old argv-only shape, which at least did what it said).
+    #[test]
+    fn api_key_argv_beats_the_env_fallback() {
+        let _g = env_guard();
+        // SAFETY: single test thread holds `env_guard`, and nothing else in
+        // this binary touches the environment while the guard is held.
+        unsafe { std::env::set_var("GROVEFS_API_KEY", "7:fromenv") };
+        assert_eq!(api_key(&base_cli("1:fromargv")), "1:fromargv");
+        assert_eq!(api_key(&base_cli("")), "7:fromenv");
+        unsafe { std::env::remove_var("GROVEFS_API_KEY") };
+        assert_eq!(api_key(&base_cli("")), "");
+        unsafe { std::env::set_var("GROVEFS_API_KEY", "7:fromenv") };
+        let noflag = Cli::try_parse_from([
+            "grovefs-mac",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "/tmp/m",
+        ])
+        .unwrap();
+        assert_eq!(api_key(&noflag), "7:fromenv");
+        unsafe { std::env::remove_var("GROVEFS_API_KEY") };
+    }
+
+    /// The layout lens is a real flag with a real path, and a missing/renamed
+    /// flag would silently drop the per-mount presentation contract the kernel
+    /// mount promises (the lens itself is covered e2e; this pins the CLI).
+    #[test]
+    fn layout_is_an_optional_path_flag() {
+        let cli = Cli::try_parse_from([
+            "grovefs-mac",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "/tmp/m",
+            "--layout",
+            "my.rules",
+        ])
+        .unwrap();
+        assert_eq!(cli.layout, Some(PathBuf::from("my.rules")));
+        let plain = Cli::try_parse_from([
+            "grovefs-mac",
+            "--manager",
+            "10.0.0.5:50055",
+            "--view",
+            "alice",
+            "--mount",
+            "/tmp/m",
+        ])
+        .unwrap();
+        assert_eq!(plain.layout, None);
+    }
 
     /// The manager is the ONLY coordinate source now: it parses alone, and the
     /// retired hand-typed address flags are rejected outright (not merely

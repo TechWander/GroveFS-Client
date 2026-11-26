@@ -64,7 +64,7 @@ feature) and only mounts it through fuser's macFUSE backend.
 cargo test
 
 # Per member.
-cargo test -p grovefs-win          # 18 tests on Linux/macOS hosts: 11 mapping gates + 7 roster/bootstrap CLI
+cargo test -p grovefs-win          # 19 tests on Linux/macOS hosts: 11 mapping gates + 8 roster/bootstrap/credential CLI
 cargo run  -p grovefs-mac -- --help
 
 # Real Windows binary (needs WinFsp 2.1 + MSVC or LLVM-MinGW, see win/README).

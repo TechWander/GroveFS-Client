@@ -75,7 +75,7 @@ cargo build -p grovefs-mac
 ```
 grovefs-mac --manager HOST:PORT --roster-key-file PATH [--deployment NAME] \
             --view NAME --token TOKEN [--api-key ID:SECRET] --mount DIR [--ro] \
-            [--no-cache] [--cache-ttl SECS] [-o OPT]...
+            [--no-cache] [--cache-ttl SECS] [--layout FILE] [-o OPT]...
 ```
 
 * The manager bootstrap is the **only** way coordinates are supplied — there is
@@ -95,7 +95,9 @@ grovefs-mac --manager HOST:PORT --roster-key-file PATH [--deployment NAME] \
   create one). `volname=GroveFS-<view>` is passed on macOS so Finder shows a
   named volume.
 * `--token` / `--api-key` are the server-side credential gate, same semantics
-  as the Windows client.
+  as the Windows client. `--api-key` left unset falls back to env
+  `GROVEFS_API_KEY` — the same entry `grovefs mount` offers, so a deployment
+  can keep the secret out of `ps` and shell history on every client kind.
 * `--ro` forces read-only; an `-o ro` does the same, and a view the server
   reports as *derived* is mounted read-only automatically.
 * A view the server reports as a **fork** mounts differently: its directory
@@ -106,6 +108,12 @@ grovefs-mac --manager HOST:PORT --roster-key-file PATH [--deployment NAME] \
   client must be rebuilt whenever the kernel's handshake grows a field.
 * `--no-cache` turns on strict cross-client coherence (dentry/attr TTL 0 +
   direct IO); otherwise the kernel cache TTL is `--cache-ttl` (default 2 s).
+* `--layout FILE` puts this mount behind a presentation lens — the same rules
+  file and the same client-side `LayoutMeta` the kernel mount's `--layout`
+  builds, so the cut is per-mount: the stored tree, the server, and every other
+  client keep seeing the whole view. Writes through the lens land on the real
+  entries; creating directly inside a synthesized (lens-only) dir is refused
+  with EPERM.
 * `-o` passes extra fuser/macFUSE options (`allow_root`, `allow_other`,
   `default_permissions`, `auto_unmount`, `volname=...`).
 * `Ctrl-C` unmounts through the session's unmounter, so no stale volume is left

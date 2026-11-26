@@ -288,10 +288,11 @@ cd $C &amp;&amp; cargo check -p grovefs-win --target x86_64-pc-windows-gnu
   <tr><td><code>--view NAME</code></td><td>必填</td><td>必填</td><td>要呈现的视图名。名字必须先存在（基视图，或有定义的派生/别名/fork）</td></tr>
   <tr><td><code>--mount TARGET</code></td><td>必填</td><td>必填</td><td>win：盘符 <code>M:</code>、目录路径，或 <code>next</code>（让 WinFsp 挑第一个空盘）；mac：<b>已存在</b>的目录</td></tr>
   <tr><td><code>--token TOKEN</code></td><td>可选</td><td>可选</td><td>集群静态令牌，对应服务端 <code>--token</code>。空 = 只按无凭据尝试</td></tr>
-  <tr><td><code>--api-key ID:SECRET</code></td><td>可选</td><td>可选</td><td>面向 <code>--require-api-key</code> 服务端的可撤销按调用方凭据（<code>grovefs apikey create --for mount</code> 铸造）</td></tr>
+  <tr><td><code>--api-key ID:SECRET</code></td><td>可选</td><td>可选</td><td>面向 <code>--require-api-key</code> 服务端的可撤销按调用方凭据（<code>grovefs apikey create --for mount</code> 铸造）。旗标留空时回退 env <code>GROVEFS_API_KEY</code>——与 <code>grovefs mount</code> 同一入口形状，部署可以把 secret 留在 <code>ps</code> 与 shell history 之外</td></tr>
   <tr><td><code>--ro</code></td><td>可选</td><td>可选</td><td>无论服务端允许什么都强制只读。与服务端下发的只读是「或」关系</td></tr>
   <tr><td><code>--no-cache</code></td><td>—</td><td>可选</td><td>严格跨客户端一致性：dentry/attr TTL 归零 + <code>FOPEN_DIRECT_IO</code>，绕过内核缓存直读</td></tr>
   <tr><td><code>--cache-ttl SECS</code></td><td>—</td><td>可选</td><td>内核属性/目录项缓存 TTL，默认 2 秒；给了 <code>--no-cache</code> 就被忽略</td></tr>
+  <tr><td><code>--layout FILE</code></td><td>—</td><td>可选</td><td>本挂载专属的<b>显示透镜</b>（与内核 <code>mount --layout</code> 同一规则文件、同一 <code>LayoutMeta</code>）：<code>hide</code>/<code>only</code>/<code>map</code>/<code>link</code> 只重组这一个挂载看到的目录形，存储树与其他客户端不受影响；经透镜写落到真实条目，往透镜合成的目录里直接新建报 <code>EPERM</code>。win 壳暂缺：映射层用的是 WinFsp 的 <code>\path\to\name</code> 分解，透镜的路径空间与之不同，需真机验证后再接</td></tr>
   <tr><td><code>-o, --options …</code></td><td>—</td><td>可选</td><td>透传给 fuser/macFUSE：<code>allow_root</code>、<code>allow_other</code>、<code>default_permissions</code>、<code>auto_unmount</code>、<code>volname=…</code>、<code>ro</code></td></tr>
 </table>
 </div>
@@ -308,7 +309,7 @@ cd $C &amp;&amp; cargo check -p grovefs-win --target x86_64-pc-windows-gnu
 <h3 id="s22">2.2 grovefs-mac 挂载</h3>
 <pre><code>grovefs-mac --manager HOST:PORT --roster-key-file F --view NAME \
             [--deployment NAME] [--token TOKEN] [--api-key ID:SECRET] --mount DIR \
-            [--ro] [--no-cache] [--cache-ttl SECS] [-o OPT]...</code></pre>
+            [--ro] [--no-cache] [--cache-ttl SECS] [--layout FILE] [-o OPT]...</code></pre>
 <ul>
   <li><b>挂载点必须已存在</b>：macFUSE 往上挂，不替你建目录。习惯做法是 <code>/Volumes/alice</code>，并且 mac 侧默认会带上 <code>volname=GroveFS-&lt;view&gt;</code>，让访达显示成有名字的卷。</li>
   <li><b>卸载只用 Ctrl-C</b>：信号处理里调 session 自带的 unmounter，正常收工会打印 <code>grovefs-mac: unmounted &lt;目录&gt;</code> 并且不留死卷。硬 <code>kill -9</code> 之后要用 <code>fusermount -u</code> 兜底。</li>
@@ -538,7 +539,7 @@ grep -c "view-definition tail" $C/dist/grovefs-mac
 <p>四层，从上到下代价递增；<b>前三层在任意 Linux 主机上都能跑</b>，不需要 Mac 或 Windows。</p>
 <h4>① 本地（本仓，无需任何服务端）</h4>
 <pre><code>cd $C
-cargo test                          <span class="cmt"># 工作区全部成员：win 18 条（11 条 mapping 门判定 + 4 条 roster 坐标 + 3 条 --manager 的 CLI 契约），mac 7 条（4 条 roster 坐标 + 3 条 --manager 的 CLI 契约）</span>
+cargo test                          <span class="cmt"># 工作区全部成员：win 19 条（11 条 mapping 门判定 + 4 条 roster 坐标 + 3 条 --manager 的 CLI 契约 + 1 条 api-key env 兜底），mac 9 条（4 条 roster 坐标 + 3 条 --manager 的 CLI 契约 + 1 条 api-key env 兜底 + 1 条 --layout 旗标）</span>
 cargo clippy --workspace --all-targets
 cargo build --release -p grovefs-mac -p grovefs-win &amp;&amp; strip --strip-unneeded target/release/*</code></pre>
 <p>要验 <code>#[cfg(windows)]</code> 那段挂载代码，走 <a href="#s15">1.5</a> 最后的 vendor stub 路线（patch 只加在<b>工作区根</b>，验完连 <code>Cargo.lock</code> 一起复原）。</p>

@@ -65,7 +65,7 @@ so on Linux they are **not** in the build graph at all:
 
 ```sh
 cd win
-cargo test          # builds the grovefs `remote-only` seam + mapping + CLI contract, runs 18 tests (11 mapping, 7 roster/bootstrap)
+cargo test          # builds the grovefs `remote-only` seam + mapping + CLI contract, runs 19 tests (11 mapping, 8 roster/bootstrap/credential)
 ```
 
 (`cargo test -p grovefs-win` from the workspace root does the same.)
@@ -153,6 +153,9 @@ second form to conflict with; `--manager` without
 any flags. The manager is asked once while the mount is being made and carries
 no traffic afterwards, so its later outage can only refuse a new mount.
 
+`--token` / `--api-key` are the server-side credential gate; a blank
+`--api-key` falls back to env `GROVEFS_API_KEY` (the same entry
+`grovefs mount` offers, so the secret stays out of the process listing).
 `--mount next` picks the first free drive letter; `--ro` forces read-only even
 if the view is writable. A view the server reports as *derived* (a virtual,
 read-only lens) is mounted read-only automatically. A view reported as a
@@ -180,6 +183,10 @@ at mount with the server's refusal text rather than silently losing writes.
   deployment; the board's `client` suite pins both halves of that pair.
 * No POSIX record locks surfaced through the mount (GroveFS has the primitive;
   mapping it to WinFsp byte-range locks is future work).
+* No `--layout` lens yet (the mac shell has one): this shell decomposes WinFsp
+  `\path\to\name` strings, a different path space from the lens's POSIX `/`,
+  and wiring it without a real Windows mount to verify against would ship an
+  untested claim rather than a port.
 * No NT ACLs: security is the server-side credential gate (`--token` /
   `--api-key`); files report existence + read-only attribute only.
 * Symlink nodes are represented but not rendered as Windows reparse points.
