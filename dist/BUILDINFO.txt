@@ -1,37 +1,48 @@
 grovefs-client prebuilt clients
-built: 2026-11-22
+built: 2026-11-26
 host: Linux 5.4.0-216-generic x86_64
 rustc: rustc 1.99.0 (b940084d7 2026-09-28)
 cargo: cargo 1.99.0 (5f94df478 2026-08-27)
-source: grovefs-client 68ce107 (source/docs commit; the two binaries,
+source: grovefs-client bb76a9f (feat(client) commit; the two binaries,
         SHA256SUMS.txt and this file are the release artifacts in this drop)
-        against sibling grovefs kernel at f435975 (master; manager-only mount
-        and signed-roster resolution are the kernel tree used at build time,
-        so these clients link exactly the tree that commit pins)
+        against sibling grovefs kernel at 87fc57e (master; the audit of
+        f435975..87fc57e - 27 kernel commits - touched nothing on the
+        client-shared surface: src/remote/**, fs_impl, layout, manager,
+        and the M_OPEN ack region is byte-for-byte unchanged, so there
+        was no protocol adaptation due in this drop)
 profile: release, lto=true, stripped
 grovefs-mac: Linux build, fuser pure-Rust mount (macOS build needs macFUSE 4.x)
 grovefs-win: Linux build, cfg(not(windows)) stub, no WinFsp FFI
-what changed vs the previous drop (4534a6a @ kernel 963553c):
-  * Mount bootstrap from a `grovefs manager`: --manager HOST:PORT resolves BOTH
-    service coordinates from one signed roster, so an operator no longer hands
-    out meta- and data addresses to every client machine. --roster-key-file is
-    required (an unverified roster is an instruction to connect wherever someone
-    else signed for). --meta-addr/--data-addr are no longer accepted at all;
-    passing either is an unknown-argument error. GROVEFS_MANAGER /
-    GROVEFS_DEPLOYMENT / GROVEFS_ROSTER_KEY_FILE work as env fallbacks, item for
-    item with `grovefs mount`.
-  * A roster declaring MORE THAN ONE data server is refused, not mounted against
-    one member. Client-side striping lives in backend::sharded, which is
-    `native`-gated, so a remote-only build cannot serve a striped deployment;
-    picking a member would hand this mount a layout other than the one the
-    deployment declared. The kernel `grovefs mount` of the SAME roster does
-    mount — the kernel repo's client stage pins both halves of that asymmetry.
-  * --meta-addr/--data-addr were removed from the client CLI. Coordinates now
-    come only from the manager's signed roster; there is no direct-address
-    fallback and every previous hand-typed command line must be migrated.
+what changed vs the previous drop (a1f6edc @ kernel f435975):
+  * GROVEFS_API_KEY env fallback in BOTH shells: with --api-key left empty
+    the credential is read from the environment, the same entry shape as
+    `grovefs mount`, so a deployment can keep the secret out of ps and
+    shell history. argv still wins when the flag is given.
+  * grovefs-mac --layout FILE: the presentation lens (grovefs::layout::
+    LayoutMeta, the same rules file and semantics as the kernel mount's
+    --layout) now wraps the remote meta chain for THIS mount only -
+    hide/only/map/link reshape only what this client sees, writes through
+    the lens land on the real entries, the stored tree and every other
+    mount are untouched. The mount banner reports the parsed rule counts.
+    grovefs-win deliberately does NOT carry --layout yet: WinFsp breaks
+    names as \path\to\name, the lens path space differs, and no claim is
+    made without real-machine verification.
 regression: `cargo test --workspace` from this source tree: grovefs-mac
-        7 tests and grovefs-win 18 tests (11 mapping + 7 roster/bootstrap);
-        the manager-only CLI contract rejects --meta-addr/--data-addr, resolves
-        both coordinates from a signed roster, and refuses missing keys,
-        incomplete rosters and striped data rosters. Release help and
+        9 tests and grovefs-win 19 tests (11 mapping + 7 roster/bootstrap
+        + 1 env-key precedence); the env fallback is asserted argv-wins,
+        and --layout is pinned as an optional path flag. Release help
+        (`--help` lists --layout and names the env fallback) and
         `sha256sum -c SHA256SUMS.txt` were also checked for this drop.
+negative control (per binary CONTENT, not path/timestamp): the previous
+        drop's binaries carry neither "GROVEFS_API_KEY" nor "--layout";
+        this drop's grovefs-mac carries the "layout overlay" banner. A
+        cross-version check must grep these strings before trusting which
+        generation a binary belongs to.
+e2e: scratch stage /data/grovefs/.tmpedit/client_iter_20261126.sh against
+        a live manager+pair cluster: 23/23 - roster bootstrap read/write,
+        env RW key admitted by a --require-api-key pair (the gate is REAL:
+        mounting the same key at an ungated deployment is asserted to be
+        ignored), --layout hide/map, lens write lands on the real path
+        (kernel mount sees it), no-lens read-back, env RO key arrives as
+        ack byte [0] -> whole mount read-only, server-side EROFS keeps
+        the mount alive (refusal verified via kernel mount too).
